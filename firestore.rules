@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Students collection
+    match /students/{studentId} {
+      allow read: if true;
+      allow create, update: if true;
+      // Permanent deletion of students is prohibited to maintain historical integrity
+      allow delete: if false;
+    }
+
+    // Classes collection
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Subjects collection
+    match /subjects/{subjectId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Attendance collection
+    match /attendance/{attendanceId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // Grade activities & Grade values
+    match /grade_activities/{activityId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /grade_values/{valueId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Teacher subject class pairings
+    match /pairings/{pairingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Delegation tokens
+    match /tokens/{tokenId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Audit logs
+    match /audit_logs/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // School settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

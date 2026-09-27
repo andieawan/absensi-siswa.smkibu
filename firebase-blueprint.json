@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Akun guru, admin, kepala sekolah, atau staf sekolah",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "ID numerik pengguna" },
+        "username": { "type": "string", "maxLength": 50, "description": "Username unik untuk login" },
+        "nama": { "type": "string", "maxLength": 150, "description": "Nama lengkap pengguna" },
+        "roles": { "type": "string", "maxLength": 100, "description": "Daftar peran (comma separated atau json)" },
+        "kelas_wali_id": { "type": "number", "description": "ID kelas jika bertindak sebagai wali kelas" },
+        "is_active": { "type": "boolean", "description": "Status keaktifan akun" },
+        "created_at": { "type": "string", "description": "Waktu pembuatan akun" }
+      },
+      "required": ["id", "username", "nama", "is_active"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Data siswa sekolah dengan nomor induk siswa permanen",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "ID numerik siswa" },
+        "nis": { "type": "string", "maxLength": 40, "description": "Nomor Induk Siswa" },
+        "nama": { "type": "string", "maxLength": 150, "description": "Nama lengkap siswa" },
+        "jk": { "type": "string", "maxLength": 2, "description": "Jenis kelamin L atau P" },
+        "class_id": { "type": "number", "description": "ID kelas siswa" },
+        "status": { "type": "string", "maxLength": 20, "description": "Status siswa: aktif, pindah, berhenti, dsb" },
+        "created_at": { "type": "string", "description": "Waktu pendaftaran siswa" }
+      },
+      "required": ["id", "nis", "nama", "class_id", "status"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Rekaman kehadiran siswa per tanggal dan mapel/harian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "ID unik entri absensi" },
+        "student_id": { "type": "number", "description": "ID siswa" },
+        "class_id": { "type": "number", "description": "ID kelas" },
+        "subject_id": { "type": "number", "description": "ID mapel, null jika absen harian wali kelas" },
+        "tanggal": { "type": "string", "maxLength": 10, "description": "Tanggal absensi format YYYY-MM-DD" },
+        "status": { "type": "string", "maxLength": 2, "description": "Status kehadiran: H, I, S, atau A" },
+        "recorded_by": { "type": "number", "description": "ID guru atau pencatat" },
+        "recorded_via": { "type": "string", "maxLength": 30, "description": "Metode pencatatan: guru, wali, ketua_kelas_delegasi, bk_manual, upload_hardcopy" },
+        "notes": { "type": "string", "maxLength": 255, "description": "Catatan khusus atau alasan izin/sakit" },
+        "created_at": { "type": "string", "description": "Waktu submit" },
+        "updated_at": { "type": "string", "description": "Waktu perbaruan terakhir" }
+      },
+      "required": ["student_id", "class_id", "tanggal", "status"]
+    },
+    "GradeActivity": {
+      "title": "GradeActivity",
+      "description": "Kegiatan penilaian tugas atau ulangan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "description": "ID UUID kegiatan" },
+        "teacher_id": { "type": "number", "description": "ID guru pembuat kegiatan" },
+        "subject_id": { "type": "number", "description": "ID mata pelajaran" },
+        "class_id": { "type": "number", "description": "ID kelas" },
+        "nama_kegiatan": { "type": "string", "maxLength": 200, "description": "Nama kegiatan penilaian" },
+        "tanggal_kegiatan": { "type": "string", "maxLength": 10, "description": "Tanggal pelaksanaan kegiatan" },
+        "tipe_skala": { "type": "string", "maxLength": 10, "description": "Tipe skala angka atau huruf" },
+        "created_at": { "type": "string", "description": "Waktu pembuatan" }
+      },
+      "required": ["id", "teacher_id", "subject_id", "class_id", "nama_kegiatan", "tanggal_kegiatan", "tipe_skala"]
+    },
+    "GradeValue": {
+      "title": "GradeValue",
+      "description": "Nilai capaian per siswa pada suatu kegiatan penilaian",
+      "type": "object",
+      "properties": {
+        "activity_id": { "type": "string", "maxLength": 64, "description": "ID kegiatan nilai" },
+        "student_id": { "type": "number", "description": "ID siswa" },
+        "nilai": { "type": "string", "maxLength": 10, "description": "Nilai siswa (0-100 atau A-E)" }
+      },
+      "required": ["activity_id", "student_id", "nilai"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Perekaman riwayat aksi operasional sistem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "ID log" },
+        "username": { "type": "string", "maxLength": 50, "description": "Pengguna yang melakukan aksi" },
+        "aksi": { "type": "string", "maxLength": 50, "description": "Nama aksi" },
+        "modul": { "type": "string", "maxLength": 50, "description": "Modul sistem" },
+        "target": { "type": "string", "maxLength": 255, "description": "Target operasi" },
+        "detail": { "type": "string", "maxLength": 500, "description": "Deskripsi detail aksi" },
+        "created_at": { "type": "string", "description": "Waktu kejadian" }
+      },
+      "required": ["username", "aksi", "modul", "target"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Koleksi data akun pengguna dan peran sistem sekolah"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Koleksi profil data pokok siswa"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Koleksi data absensi harian dan mata pelajaran terpadu"
+    },
+    "/grade_activities/{activityId}": {
+      "schema": "GradeActivity",
+      "description": "Koleksi kegiatan penilaian guru"
+    },
+    "/grade_values/{valueId}": {
+      "schema": "GradeValue",
+      "description": "Koleksi rekaman nilai siswa per kegiatan"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Koleksi log audit aktivitas pengguna"
+    }
+  }
+}
