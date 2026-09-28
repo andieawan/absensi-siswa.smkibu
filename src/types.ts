@@ -85,7 +85,7 @@ export interface KetuaKelasToken {
   created_at: string;
   created_by: number;
   expires_at?: string; // ISO string batas waktu (misal 24 jam)
-  expires_at_millis?: number; // Epoch timestamp ms untuk validasi Firestore Rules & waktu server
+  expires_at_millis?: number; // Epoch timestamp ms untuk validasi kedaluwarsa di server
 }
 
 export interface ParentAccessToken {

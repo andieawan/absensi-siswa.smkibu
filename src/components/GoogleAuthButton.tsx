@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { googleSignIn, googleSignOut, initGoogleAuth, getGoogleAccessToken } from '../services/googleAuth';
-import { User as FirebaseUser } from 'firebase/auth';
+import { googleSignIn, googleSignOut, initGoogleAuth, getGoogleAccessToken, GoogleUserInfo } from '../services/googleAuth';
 import { CheckCircle2, LogOut, FileSpreadsheet } from 'lucide-react';
 
 interface GoogleAuthButtonProps {
@@ -8,7 +7,7 @@ interface GoogleAuthButtonProps {
 }
 
 export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({ onTokenChange }) => {
-  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+  const [googleUser, setGoogleUser] = useState<GoogleUserInfo | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasToken, setHasToken] = useState<boolean>(false);
 

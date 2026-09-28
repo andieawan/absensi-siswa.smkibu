@@ -15,8 +15,6 @@ import {
   AttentionStudent,
   AttendanceStatus,
 } from '../types';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { apiFetch, getAuthToken } from './authToken';
 import {
   INITIAL_CLASSES,
@@ -697,23 +695,14 @@ class StorageManager {
       `Masa Berlaku s.d. ${newToken.expires_at || '-'}`
     );
 
-    // Simpan ke Cloud Firestore (agar dapat dibaca lintas-device oleh murid)
-    try {
-      setDoc(doc(db, 'tokens', newToken.token), newToken).catch((err) => {
-        console.warn('[Firebase] Gagal menyimpan token ke Firestore:', err);
-      });
-    } catch (e) {
-      console.warn('[Firebase] Gagal init simpan token:', e);
-    }
-
     return newToken;
   }
 
   // Akses Orang Tua/Wali Murid (baca-saja, per siswa)
   // Beda dari token delegasi Ketua Kelas: tidak disinkronkan ke localStorage
-  // atau Firestore sama sekali. Server adalah satu-satunya sumber data —
-  // guru yang mengelola token ini harus online, dan portal orang tua sendiri
-  // (ParentPortalView) memanggil server langsung tanpa lewat storage.ts.
+  // sama sekali. Server adalah satu-satunya sumber data — guru yang mengelola
+  // token ini harus online, dan portal orang tua sendiri (ParentPortalView)
+  // memanggil server langsung tanpa lewat storage.ts.
 
   async createParentAccessToken(studentId: number): Promise<ParentAccessToken> {
     let res: Response;
@@ -760,9 +749,8 @@ class StorageManager {
   }
 
   /**
-   * Verifikasi token delegasi lintas-device:
-   * Membaca dari Cloud Firestore (authoritative cross-device source),
-   * memeriksa status aktif, dan mengecek masa berlaku (expiry).
+   * Verifikasi token delegasi lintas-device: Server API (sumber kebenaran),
+   * dengan fallback ke LocalStorage perangkat pembuat kalau server offline.
    */
   async verifyDelegationToken(tokenStr: string): Promise<{ valid: boolean; token?: KetuaKelasToken; error?: string }> {
     if (!tokenStr) {
@@ -770,37 +758,7 @@ class StorageManager {
     }
     const now = Date.now();
 
-    // 1. Coba baca langsung dari Cloud Firestore (Lintas-Device)
-    try {
-      const snap = await getDoc(doc(db, 'tokens', tokenStr));
-      if (snap.exists()) {
-        const firestoreToken = snap.data() as KetuaKelasToken;
-        if (firestoreToken.status !== 'aktif') {
-          return { valid: false, error: 'Tautan delegasi ini telah dinonaktifkan atau dicabut oleh wali kelas.' };
-        }
-
-        const expiryTime = firestoreToken.expires_at_millis ||
-          (firestoreToken.expires_at ? new Date(firestoreToken.expires_at).getTime() : null);
-
-        if (expiryTime && now > expiryTime) {
-          return {
-            valid: false,
-            error: `Tautan delegasi telah kedaluwarsa (berakhir pada ${new Date(expiryTime).toLocaleString('id-ID')}). Silakan minta Wali Kelas membuatkan tautan presensi baru.`,
-          };
-        }
-
-        // Simpan ke cache lokal agar bila ada kendala koneksi tetap terbaca
-        const currentTokens = this.getDelegationTokens();
-        if (!currentTokens.some((t) => t.token === firestoreToken.token)) {
-          this.setItem(STORAGE_KEYS.TOKENS, [...currentTokens, firestoreToken]);
-        }
-        return { valid: true, token: firestoreToken };
-      }
-    } catch (err) {
-      console.warn('[Storage] Gagal baca token dari Firestore:', err);
-    }
-
-    // 2. Fallback: Server API endpoint (/api/delegation/verify)
+    // 1. Server API endpoint (/api/delegation/verify) — sumber kebenaran lintas-device
     try {
       const resp = await fetch(`/api/delegation/verify?token=${encodeURIComponent(tokenStr)}`);
       if (resp.ok) {
@@ -815,7 +773,7 @@ class StorageManager {
       console.warn('[Storage] Gagal verifikasi lewat API server:', err);
     }
 
-    // 3. Fallback: LocalStorage perangkat pembuat
+    // 2. Fallback: LocalStorage perangkat pembuat
     const localToken = this.getDelegationTokens().find((t) => t.token === tokenStr);
     if (localToken) {
       if (localToken.status !== 'aktif') {

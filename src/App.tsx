@@ -19,14 +19,8 @@ import { AdminPanelView } from './components/AdminPanelView';
 import { BkView } from './components/BkView';
 import { DelegatedStudentView } from './components/DelegatedStudentView';
 import { ParentPortalView } from './components/ParentPortalView';
-import {
-  testFirestoreConnection,
-  syncStorageToFirestore,
-  syncFirestoreToStorage,
-  initializeBidirectionalSync,
-} from './services/firestoreSync';
 import { initializeSqlBidirectionalSync } from './services/sqlSync';
-import { ShieldCheck, Server, Database, Check, Flame, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Server, Database, Check, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getAuthenticatedUser());
@@ -34,7 +28,6 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<User[]>(() => storage.getUsers());
   const [classes, setClasses] = useState<ClassItem[]>(() => storage.getClasses());
   const [subjects, setSubjects] = useState<Subject[]>(() => storage.getSubjects());
-  const [firestoreConnected, setFirestoreConnected] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [syncedCounts, setSyncedCounts] = useState<{ students: number; attendance: number } | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
@@ -52,28 +45,6 @@ export default function App() {
   // Switching user modal state
   const [pendingSwitchUserId, setPendingSwitchUserId] = useState<number | null>(null);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
-
-  const runBidirectionalSync = async () => {
-    setSyncStatus('syncing');
-    try {
-      const res = await initializeBidirectionalSync();
-      if (res.success) {
-        setSyncStatus('synced');
-        setSyncedCounts(res.counts);
-        setLastSyncTime(
-          new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        );
-        // Refresh component states with newly hydrated data
-        setAllUsers(storage.getUsers());
-        setClasses(storage.getClasses());
-        setSubjects(storage.getSubjects());
-      } else {
-        setSyncStatus('idle');
-      }
-    } catch {
-      setSyncStatus('error');
-    }
-  };
 
   // Sinkronisasi utama: server SQLite sekolah sendiri. Tidak butuh login Google —
   // berjalan untuk SEMUA user (login lokal username/PIN ataupun Google Workspace),
@@ -107,17 +78,6 @@ export default function App() {
       runSqlSync();
     }
   }, [isAuthenticated]);
-
-  // Firestore tetap tersedia sebagai jalur sinkronisasi tambahan khusus untuk
-  // user yang sign-in dengan akun Google Workspace (mis. untuk fitur Docs/Sheets).
-  useEffect(() => {
-    testFirestoreConnection().then(async (connected) => {
-      setFirestoreConnected(connected);
-      if (connected) {
-        await runBidirectionalSync();
-      }
-    });
-  }, []);
 
   // Check URL query parameters for token (e.g., ?token=... untuk delegasi Ketua
   // Kelas, ?wali=... untuk portal Orang Tua/Wali Murid — dua jalur publik yang
@@ -368,13 +328,6 @@ export default function App() {
               <Database className="w-3.5 h-3.5 text-indigo-600" />
               <span>SQLite Relational Engine (Server Sekolah)</span>
             </div>
-            {firestoreConnected && (
-              <div className="flex items-center gap-1.5 text-slate-700">
-                <Flame className="w-3.5 h-3.5 text-amber-500" />
-                <span>Cloud Firestore Aktif</span>
-              </div>
-            )}
-
             {syncStatus === 'syncing' ? (
               <div className="flex items-center gap-1 text-indigo-600 font-medium">
                 <RefreshCw className="w-3 h-3 animate-spin" />
@@ -383,10 +336,7 @@ export default function App() {
             ) : syncStatus === 'synced' ? (
               <button
                 type="button"
-                onClick={() => {
-                  runSqlSync();
-                  if (firestoreConnected) runBidirectionalSync();
-                }}
+                onClick={() => runSqlSync()}
                 title={`Sinkronisasi server sekolah aktif · Terakhir: ${lastSyncTime || 'Baru saja'}`}
                 className="flex items-center gap-1 text-emerald-700 font-semibold hover:text-emerald-800 transition-colors"
               >
@@ -398,10 +348,7 @@ export default function App() {
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  runSqlSync();
-                  if (firestoreConnected) runBidirectionalSync();
-                }}
+                onClick={() => runSqlSync()}
                 className="flex items-center gap-1 text-slate-600 hover:text-indigo-600 transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-slate-400" />

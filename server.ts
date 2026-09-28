@@ -426,7 +426,7 @@ async function startServer() {
           name: 'Batas Hapus & Ubah Absensi 7 Hari',
           description:
             'Data absensi yang berusia lebih dari 7 hari dikunci secara permanen. Hanya Administrator yang dapat memodifikasi data melebihi 7 hari.',
-          enforcement_points: ['POST /api/attendance/delete', 'POST /api/attendance/submit', 'Firestore Security Rules'],
+          enforcement_points: ['POST /api/attendance/delete', 'POST /api/attendance/submit'],
         },
         {
           id: 'RULE-02',
@@ -1439,7 +1439,7 @@ async function startServer() {
         grade_values_primary: '(activity_id, student_id)',
         pairing_primary: '(user_id, subject_id, class_id)',
         business_rules: {
-          retention_7_days: 'Enforced via /api/attendance/delete & Firestore Security Rules',
+          retention_7_days: 'Enforced via /api/attendance/delete',
           minimum_attendance_85_percent: 'Enforced via /api/students/academic-clearance & /api/students/evaluate-eligibility',
           teacher_pairing_authorization: 'Enforced via /api/attendance/submit & /api/grades/submit',
         },

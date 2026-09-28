@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { storage } from '../services/storage';
 import { ClassItem, Student, AttendanceStatus, KetuaKelasToken } from '../types';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { CheckCircle2, Send, ShieldAlert, Clock, Loader2, Calendar } from 'lucide-react';
 
 interface DelegatedStudentViewProps {
@@ -35,7 +33,7 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
   const [submitConfirmedByServer, setSubmitConfirmedByServer] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Verifikasi token lintas-device (Firestore -> Server API -> Local Storage fallback)
+  // Verifikasi token lintas-device (Server API -> Local Storage fallback)
   useEffect(() => {
     let isMounted = true;
 
@@ -47,18 +45,7 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
       const now = Date.now();
       let verifiedToken: KetuaKelasToken | null = null;
 
-      // 1. Coba baca langsung dari Cloud Firestore (Pusat kebenaran lintas-device)
-      try {
-        const snap = await getDoc(doc(db, 'tokens', token));
-        if (snap.exists()) {
-          const rawData = snap.data() as KetuaKelasToken;
-          verifiedToken = rawData;
-        }
-      } catch (err) {
-        console.warn('[DelegatedStudentView] Baca langsung Firestore:', err);
-      }
-
-      // 2. Query endpoint sesi delegasi server (menyediakan data kelas & daftar siswa tanpa bocor)
+      // 1. Query endpoint sesi delegasi server (menyediakan data kelas & daftar siswa tanpa bocor)
       try {
         const res = await fetch(`/api/delegation/session?token=${encodeURIComponent(token)}`);
         if (res.ok) {
@@ -83,11 +70,9 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
         console.warn('[DelegatedStudentView] Query session server:', err);
       }
 
-      // 3. Fallback: jika direct firestore berhasil tapi server offline
-      if (!verifiedToken) {
-        // Fallback local storage jika dibuka di perangkat yang sama
-        verifiedToken = storage.getDelegationTokens().find((t) => t.token === token) || null;
-      }
+      // 2. Fallback: LocalStorage jika server tidak terjangkau dan tautan ini
+      // dibuka di perangkat yang sama dengan yang membuat token-nya.
+      verifiedToken = storage.getDelegationTokens().find((t) => t.token === token) || null;
 
       if (verifiedToken && isMounted) {
         // Evaluasi masa berlaku (expiry)
@@ -152,7 +137,7 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
         <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mx-auto" />
         <h2 className="text-base font-bold text-slate-900">Memverifikasi Tautan Delegasi...</h2>
         <p className="text-xs text-slate-500">
-          Menghubungkan ke database Cloud Firestore untuk memvalidasi hak akses dan status token ketua kelas lintas-perangkat.
+          Menghubungkan ke server sekolah untuk memvalidasi hak akses dan status token ketua kelas lintas-perangkat.
         </p>
       </div>
     );
@@ -328,7 +313,7 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
             <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
             <h2 className="text-base font-bold text-slate-900">Presensi Berhasil Dikirimkan!</h2>
             <p className="text-xs text-slate-600 max-w-md mx-auto">
-              Terima kasih! Data absensi harian kelas {targetClass.name} untuk tanggal {selectedDate} telah tersimpan aman di database sekolah dan Cloud Firestore.
+              Terima kasih! Data absensi harian kelas {targetClass.name} untuk tanggal {selectedDate} telah tersimpan aman di database sekolah.
             </p>
             <div className="pt-2">
               <button

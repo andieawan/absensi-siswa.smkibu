@@ -4,11 +4,11 @@ import { authHeaders } from './authToken';
 /**
  * Sinkronisasi Dua Arah dengan Backend SQLite (server/db.ts, lewat REST API server.ts)
  *
- * Berbeda dengan Firestore (services/firestoreSync.ts) yang baru aktif setelah user
- * benar-benar Sign-In dengan akun Google Workspace, sinkronisasi SQL ini TIDAK butuh
- * login Google sama sekali — server SQLite adalah server sekolah sendiri, jadi berlaku
- * untuk semua user yang login lokal (username/PIN) di perangkat manapun. Inilah jalur
- * sinkronisasi lintas-perangkat utama untuk sebagian besar guru.
+ * Sinkronisasi SQL ini TIDAK butuh login Google sama sekali — server SQLite
+ * adalah server sekolah sendiri, jadi berlaku untuk semua user yang login lokal
+ * (username/PIN) di perangkat manapun. Inilah satu-satunya jalur sinkronisasi
+ * lintas-perangkat aplikasi (menggantikan Cloud Firestore yang sebelumnya
+ * dipakai sebagai jalur sinkronisasi tambahan, sudah dihapus dari aplikasi).
  *
  * Endpoint /api/sync/pull & /api/sync/push mensyaratkan token sesi server (Bearer
  * token) yang diterbitkan saat login (lihat services/auth.ts -> loginToServer).

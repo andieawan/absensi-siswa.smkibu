@@ -241,9 +241,9 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     });
   };
 
-  // Generate Ketua Kelas Delegation Token (PRD 6.2 & Cross-Device Firestore Sync)
+  // Generate Ketua Kelas Delegation Token (PRD 6.2 & Cross-Device Server Sync)
   const handleGenerateDelegation = async () => {
-    // Token diterbitkan server (masa berlaku 24 jam), lalu disalin ke Firestore
+    // Token diterbitkan server (masa berlaku 24 jam) — sumber kebenaran lintas-device
     try {
       const tokenObj = await storage.createDelegationToken(selectedClassId, 24);
       setGeneratedToken(tokenObj.token);
@@ -767,7 +767,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Wali kelas dapat memberikan tautan ini kepada Ketua Kelas agar dapat menginput absen harian mandiri tanpa harus memiliki akun guru. Tautan disinkronkan ke Cloud Firestore sehingga dapat langsung dibuka di perangkat murid manapun.
+              Wali kelas dapat memberikan tautan ini kepada Ketua Kelas agar dapat menginput absen harian mandiri tanpa harus memiliki akun guru. Tautan tersimpan di server sekolah sehingga dapat langsung dibuka di perangkat murid manapun.
             </p>
 
             {generatedTokenObj?.expires_at && (
@@ -783,7 +783,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
             )}
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="text-[11px] text-slate-500 mb-1">Token Akses Aman (Cloud Firestore):</div>
+              <div className="text-[11px] text-slate-500 mb-1">Token Akses Aman (Server Sekolah):</div>
               <div className="font-mono text-xs text-slate-900 break-all select-all font-semibold">
                 {generatedToken}
               </div>
