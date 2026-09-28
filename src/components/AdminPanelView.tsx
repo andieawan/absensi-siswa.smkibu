@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { User, Student, ClassItem, Subject, TeacherPairing, AuditLogItem, Role } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { User, Student, ClassItem, Subject, TeacherPairing, AuditLogItem, Role, SchoolSettings } from '../types';
 import { storage } from '../services/storage';
 import { authService } from '../services/auth';
+import { apiFetch } from '../services/authToken';
 import { generateHardcopyTemplate, parseHardcopyUpload, HardcopyPreviewResult } from '../utils/excel';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
 import {
@@ -19,6 +20,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Lock,
+  Loader2,
+  ServerCog,
 } from 'lucide-react';
 
 interface AdminPanelViewProps {
@@ -328,6 +331,52 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
     const data = storage.getBackupSnapshot();
     storage.triggerAutomaticJsonBackupDownload(data, 'backup_full_json');
     storage.addAuditLog('Backup JSON', 'Backup', 'Full Export', 'Pengunduhan arsip terstruktur JSON');
+  };
+
+  // Status backup SERVER (SQLite snapshot terjadwal, lihat server/backup.ts) —
+  // ini terpisah dari tombol unduh SQL/JSON di atas yang cuma menyalin data ke
+  // perangkat guru yang sedang login. Ambil langsung dari server (bukan hanya
+  // dari storage lokal yang mungkin belum sinkron) supaya statusnya akurat.
+  const [serverBackupSettings, setServerBackupSettings] = useState<SchoolSettings | null>(null);
+  const [isServerBackupLoading, setIsServerBackupLoading] = useState<boolean>(true);
+  const [isRunningServerBackup, setIsRunningServerBackup] = useState<boolean>(false);
+
+  const refreshServerBackupStatus = async () => {
+    setIsServerBackupLoading(true);
+    try {
+      const res = await apiFetch('/api/settings');
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data.data) {
+        setServerBackupSettings(data.data as SchoolSettings);
+      }
+    } catch (err) {
+      console.warn('[AdminPanel] Gagal memuat status backup server:', err);
+    } finally {
+      setIsServerBackupLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshServerBackupStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleServerBackupNow = async () => {
+    setIsRunningServerBackup(true);
+    try {
+      const res = await apiFetch('/api/admin/backup-now', { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setServerBackupSettings(data.settings as SchoolSettings);
+        setFeedback({ type: 'success', text: `Backup database server berhasil dibuat: ${data.file}` });
+      } else {
+        setFeedback({ type: 'error', text: data?.error || 'Gagal membuat backup database server.' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'Server tidak dapat dihubungi untuk memulai backup.' });
+    } finally {
+      setIsRunningServerBackup(false);
+    }
   };
 
   return (
@@ -1017,22 +1066,63 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               Sistem mengekspor skema dan seluruh baris data ternormalisasi ke dalam file SQL dump yang kompatibel dengan server MySQL fisik, serta cadangan arsip JSON.
             </p>
 
+            {/* Status backup server sungguhan (VACUUM INTO snapshot terjadwal, lihat server/backup.ts) */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">Jadwal Cron Mingguan:</span>
-                <span className="font-mono font-semibold text-emerald-700">Aktif (Setiap Minggu 02:00)</span>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                <ServerCog className="w-3.5 h-3.5 text-indigo-600" />
+                Backup Otomatis Server
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">Kebijakan Retensi:</span>
-                <span className="font-mono text-slate-800">8 Minggu Terakhir</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">Pencadangan Terakhir:</span>
-                <span className="font-mono text-slate-800">2026-09-21 02:00:00 (Sukses)</span>
-              </div>
+              {isServerBackupLoading ? (
+                <div className="flex items-center gap-1.5 text-slate-500 py-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Memuat status backup server...
+                </div>
+              ) : serverBackupSettings ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Jadwal Otomatis:</span>
+                    <span className="font-mono font-semibold text-emerald-700">Aktif (Tiap 24 Jam)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Kebijakan Retensi:</span>
+                    <span className="font-mono text-slate-800">
+                      {serverBackupSettings.backup_retention_weeks} Minggu Terakhir
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Pencadangan Terakhir:</span>
+                    <span
+                      className={`font-mono ${
+                        serverBackupSettings.last_backup_status === 'failed' ? 'text-rose-700 font-semibold' : 'text-slate-800'
+                      }`}
+                    >
+                      {serverBackupSettings.last_backup_date
+                        ? `${serverBackupSettings.last_backup_date} (${
+                            serverBackupSettings.last_backup_status === 'failed' ? 'Gagal' : 'Sukses'
+                          })`
+                        : 'Belum pernah berjalan'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-slate-500">Status backup server tidak dapat dimuat (server tidak terjangkau).</p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={handleServerBackupNow}
+                disabled={isRunningServerBackup}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold bg-indigo-700 hover:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition-colors shadow-xs"
+              >
+                {isRunningServerBackup ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ServerCog className="w-3.5 h-3.5" />
+                )}
+                {isRunningServerBackup ? 'Membuat Snapshot Database Server...' : 'Backup Database Server Sekarang'}
+              </button>
+
               <button
                 onClick={() => setShowGoogleSheetsBackupModal(true)}
                 className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg transition-colors shadow-xs"
@@ -1056,6 +1146,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 <Download className="w-3.5 h-3.5 text-indigo-600" />
                 Unduh Cadangan Struktur JSON
               </button>
+              <p className="text-[10px] text-slate-400 pt-1">
+                "Backup Database Server Sekarang" & jadwal otomatis menyimpan snapshot penuh di server sekolah
+                (persisten, tidak tergantung perangkat). Tiga tombol di bawahnya mengunduh salinan ke perangkat ini.
+              </p>
             </div>
           </div>
         </div>
