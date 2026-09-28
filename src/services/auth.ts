@@ -46,31 +46,62 @@ export interface AuthSession {
 }
 
 /**
- * Login ke server (POST /api/auth/login) untuk memperoleh token sesi.
- * Best-effort: kalau server tidak bisa dihubungi (offline/dev tanpa server),
- * fungsi ini TIDAK melempar error — aplikasi tetap bisa jalan dengan sesi
- * lokal saja, hanya saja sinkronisasi lintas-device tidak akan aktif sampai
- * server bisa dihubungi lagi.
+ * Hasil login ke server:
+ * - 'ok'       : kredensial valid, token sesi server tersimpan.
+ * - 'rejected' : server menjawab tapi menolak (password salah, akun nonaktif,
+ *                terlalu banyak percobaan). TIDAK boleh fallback ke verifikasi lokal.
+ * - 'offline'  : server tidak bisa dihubungi (jaringan / dev tanpa server).
  */
-async function loginToServer(username: string, password: string): Promise<boolean> {
+type ServerLoginResult =
+  | { status: 'ok'; user: User }
+  | { status: 'rejected'; error: string }
+  | { status: 'offline' };
+
+/**
+ * Login ke server (POST /api/auth/login) untuk memperoleh token sesi.
+ * Server adalah sumber kebenaran akun; verifikasi lokal hanya dipakai saat offline.
+ */
+async function loginToServer(username: string, password: string): Promise<ServerLoginResult> {
   try {
-    if (typeof fetch === 'undefined') return false;
+    if (typeof fetch === 'undefined') return { status: 'offline' };
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.success && data.token) {
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.success && data.token && data.user) {
       setAuthToken(data.token);
-      return true;
+      return { status: 'ok', user: data.user as User };
     }
-    return false;
+    // Respons non-JSON / 5xx = server bermasalah, perlakukan seperti offline.
+    if (!data || res.status >= 500) return { status: 'offline' };
+    return { status: 'rejected', error: data.error || 'Username atau password/PIN salah.' };
   } catch (err) {
-    console.warn('[Auth] Tidak bisa memperoleh token sesi server:', err);
-    return false;
+    console.warn('[Auth] Tidak bisa menghubungi server untuk login:', err);
+    return { status: 'offline' };
   }
+}
+
+/**
+ * Simpan akun hasil login server ke daftar user lokal (server tidak pernah
+ * mengirim password_hash, jadi hash lokal dibuat dari password yang barusan
+ * terverifikasi server — dipakai untuk login saat offline).
+ */
+async function upsertLocalUserFromServer(serverUser: User, password: string): Promise<User> {
+  const localHash = await hashPassword(password);
+  const merged: User = { ...serverUser, password_hash: localHash };
+  const users = storage.getUsers();
+  const idx = users.findIndex((u) => u.id === merged.id);
+  // Akun lain dengan username sama tapi ID berbeda (mis. sisa data demo) dibuang.
+  const others = users.filter((u, i) => i !== idx && u.username.toLowerCase() !== merged.username.toLowerCase());
+  if (idx >= 0) {
+    others.splice(Math.min(idx, others.length), 0, merged);
+  } else {
+    others.push(merged);
+  }
+  storage.saveUsers(others);
+  return merged;
 }
 
 export const authService = {
@@ -141,27 +172,33 @@ export const authService = {
     }
 
     const cleanUsername = username.trim().toLowerCase();
-    const users = storage.getUsers();
-    const user = users.find((u) => u.username.toLowerCase() === cleanUsername);
+    const cleanPassword = passwordAttempt.trim();
 
-    if (!user) {
-      return { success: false, error: `Akun dengan username "${username}" tidak ditemukan.` };
+    // 1. Server adalah sumber kebenaran akun. Kalau server menjawab, keputusannya final.
+    const serverResult = await loginToServer(cleanUsername, cleanPassword);
+    if (serverResult.status === 'rejected') {
+      return { success: false, error: serverResult.error };
     }
 
-    const verification = await this.verifyCredentials(user, passwordAttempt);
-    if (!verification.success) {
-      return verification;
+    let user: User;
+    if (serverResult.status === 'ok') {
+      user = await upsertLocalUserFromServer(serverResult.user, cleanPassword);
+    } else {
+      // 2. Mode offline: verifikasi terhadap salinan akun lokal perangkat ini.
+      const localUser = storage.getUsers().find((u) => u.username.toLowerCase() === cleanUsername);
+      if (!localUser) {
+        return { success: false, error: 'Server tidak dapat dihubungi dan akun ini belum pernah login di perangkat ini.' };
+      }
+      const verification = await this.verifyCredentials(localUser, cleanPassword);
+      if (!verification.success) {
+        return verification;
+      }
+      user = localUser;
     }
 
     // Save session
     this.setAuthenticatedUser(user);
     storage.addAuditLog('Login Sistem', 'Sistem', user.nama, `Pengguna ${user.username} berhasil login`);
-
-    // Best-effort: perbarui token sesi server dengan password yang baru saja
-    // diverifikasi. Kalau server tidak terjangkau, login lokal tetap berhasil
-    // (ditunggu di sini supaya sinkronisasi yang berjalan setelah login sudah
-    // punya token yang valid, tapi kegagalannya tidak menggagalkan login).
-    await loginToServer(user.username, passwordAttempt.trim());
 
     return { success: true, user };
   },

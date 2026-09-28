@@ -242,13 +242,17 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   };
 
   // Generate Ketua Kelas Delegation Token (PRD 6.2 & Cross-Device Firestore Sync)
-  const handleGenerateDelegation = () => {
-    // Buat token dengan masa berlaku 24 jam (tersimpan ke Firestore secara otomatis)
-    const tokenObj = storage.createDelegationToken(selectedClassId, currentUser.id, 24);
-    setGeneratedToken(tokenObj.token);
-    setGeneratedTokenObj(tokenObj);
-    setShowDelegationModal(true);
-    setCopiedLink(false);
+  const handleGenerateDelegation = async () => {
+    // Token diterbitkan server (masa berlaku 24 jam), lalu disalin ke Firestore
+    try {
+      const tokenObj = await storage.createDelegationToken(selectedClassId, 24);
+      setGeneratedToken(tokenObj.token);
+      setGeneratedTokenObj(tokenObj);
+      setShowDelegationModal(true);
+      setCopiedLink(false);
+    } catch (err: any) {
+      alert(err?.message || 'Gagal membuat tautan delegasi.');
+    }
   };
 
   // Summary counts for current form

@@ -47,6 +47,7 @@ const DB_PATH = process.env.DB_PATH || path.resolve(__dirname, '..', 'data', 'ab
 
 // Pastikan folder data/ ada sebelum membuka file database.
 import fs from 'fs';
+import { createHash, randomBytes } from 'node:crypto';
 const dataDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -316,7 +317,49 @@ function seedIfEmpty() {
   );
 }
 
-seedIfEmpty();
+/**
+ * Produksi: TIDAK memuat data demo (akun demo punya password yang tertulis di
+ * source code publik). Akun Administrator pertama dibuat dari variabel
+ * environment ADMIN_USERNAME + ADMIN_PASSWORD saat tabel users masih kosong.
+ */
+function bootstrapProductionAdmin() {
+  const countRow = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
+  if (countRow.c > 0) return;
+
+  const username = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!username || password.length < 10) {
+    console.warn(
+      '[DB] Database kosong dan data demo dinonaktifkan (NODE_ENV=production). ' +
+        'Set ADMIN_USERNAME dan ADMIN_PASSWORD (min. 10 karakter) lalu restart server untuk membuat akun Administrator pertama.'
+    );
+    return;
+  }
+
+  // Format hash sama dengan src/services/auth.ts: "sha256:<salt>:<sha256(salt:password)>"
+  const salt = randomBytes(16).toString('hex');
+  const hash = createHash('sha256').update(`${salt}:${password}`).digest('hex');
+  db.prepare(
+    `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
+     VALUES (1, ?, ?, ?, NULL, NULL, 1, ?, ?, '[]', '[]')`
+  ).run(
+    username,
+    `sha256:${salt}:${hash}`,
+    process.env.ADMIN_NAMA || 'Administrator',
+    new Date().toISOString().replace('T', ' ').substring(0, 19),
+    JSON.stringify(['superadmin', 'admin'])
+  );
+  db.prepare(`INSERT OR REPLACE INTO sequences (entity, value) VALUES ('users', 10)`).run();
+  console.log(`[DB] Akun Administrator pertama "${username}" dibuat dari environment. Hapus ADMIN_PASSWORD dari environment setelah login pertama.`);
+}
+
+// Data demo hanya dimuat di luar produksi, atau jika diminta eksplisit lewat SEED_DEMO_DATA=true.
+const shouldSeedDemo = process.env.SEED_DEMO_DATA === 'true' || process.env.NODE_ENV !== 'production';
+if (shouldSeedDemo) {
+  seedIfEmpty();
+} else {
+  bootstrapProductionAdmin();
+}
 
 // ============================================================================
 // Helper: alokasi ID atomik (Single Source of Truth) via tabel `sequences`

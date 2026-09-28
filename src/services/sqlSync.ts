@@ -68,7 +68,9 @@ export async function syncSqlToStorage(): Promise<{
       // agar tidak ada device yang tiba-tiba kehilangan kemampuan verifikasi password.
       const currentUsers = storage.getUsers();
       const mergedUsers = remote.users.map((ru: any) => {
-        const localUser = currentUsers.find((cu) => cu.id === ru.id);
+        // Cocokkan ID *dan* username: hash lokal milik akun demo lama tidak boleh
+        // menempel ke akun server lain yang kebetulan ber-ID sama.
+        const localUser = currentUsers.find((cu) => cu.id === ru.id && cu.username === ru.username);
         return { ...ru, password_hash: localUser?.password_hash };
       });
       storage.saveUsers(mergedUsers);

@@ -148,11 +148,16 @@ export default function App() {
       };
     }
 
+    // Token sesi server harus ikut berpindah ke akun baru. Kalau server menjawab
+    // dan menolak, pergantian akun dibatalkan (server = sumber kebenaran akun).
+    const serverResult = await authService.loginToServer(verification.user.username, passwordAttempt.trim());
+    if (serverResult.status === 'rejected') {
+      return { success: false, error: serverResult.error };
+    }
+
     // Credentials successfully verified
     const user = storage.setCurrentUser(userId);
     authService.setAuthenticatedUser(user);
-    // Perbarui token sesi server untuk akun yang baru dipilih (best-effort).
-    await authService.loginToServer(user.username, passwordAttempt);
     setCurrentUser(user);
     setPendingSwitchUserId(null);
 

@@ -16,7 +16,7 @@ import {
 } from '../types';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { authHeaders } from './authToken';
+import { apiFetch, getAuthToken } from './authToken';
 import {
   INITIAL_CLASSES,
   INITIAL_SUBJECTS,
@@ -131,12 +131,9 @@ class StorageManager {
     if (this.isReplenishing[entity]) return;
     this.isReplenishing[entity] = true;
     try {
-      if (typeof fetch !== 'undefined') {
-        const res = await fetch('/api/sequence/allocate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ entity, count: requestCount }),
-        });
+      // Endpoint alokasi butuh sesi server; sebelum login pakai generator lokal saja.
+      if (typeof fetch !== 'undefined' && getAuthToken()) {
+        const res = await apiFetch('/api/sequence/allocate', { json: { entity, count: requestCount } });
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.allocatedIds)) {
@@ -464,15 +461,28 @@ class StorageManager {
       `Tanggal: ${params.tanggal}, Total: ${params.entries.length} (${created} baru, ${updated} update) via ${params.recorded_via}`
     );
 
-    // Kirim data ke backend server untuk validasi dan penegakan aturan bisnis server-side
-    // (recorded_by tidak lagi dipakai server — identitas diambil dari token sesi)
-    fetch('/api/attendance/submit', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(params),
+    // Presensi delegasi ketua kelas dikirim lewat /api/delegation/submit (divalidasi token),
+    // bukan lewat endpoint guru ini.
+    if (params.recorded_via === 'ketua_kelas_delegasi') {
+      return { count: params.entries.length, updated, created };
+    }
+
+    // Kirim data ke backend server untuk validasi dan penegakan aturan bisnis server-side.
+    // Identitas pencatat (recorded_by) diambil server dari token sesi, bukan dari body.
+    apiFetch('/api/attendance/submit', {
+      json: {
+        class_id: params.class_id,
+        subject_id: params.subject_id,
+        tanggal: params.tanggal,
+        recorded_via: params.recorded_via,
+        entries: params.entries,
+      },
     })
       .then((res) => res.json())
       .then((data) => {
+        if (!data.success) {
+          console.warn('[Server API] Submit absensi ditolak server:', data.error);
+        }
         if (data.attendanceAlerts && data.attendanceAlerts.length > 0) {
           console.warn('[Server Business Rule 85%] Peringatan Kehadiran Server:', data.attendanceAlerts);
         }
@@ -508,16 +518,10 @@ class StorageManager {
       `Menghapus ${deletedCount} entri absensi dalam batas 7 hari.`
     );
 
-    // Kirim instruksi penghapusan ke server agar aturan 7 hari dan otorisasi juga
-    // diverifikasi di sisi server (identitas & role diambil dari token sesi, bukan body)
-    fetch('/api/attendance/delete', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        class_id: classId,
-        subject_id: subjectId,
-        tanggal,
-      }),
+    // Kirim instruksi penghapusan ke server agar aturan 7 hari dan otorisasi juga diverifikasi di sisi server
+    // Identitas & peran pengguna ditentukan server dari token sesi.
+    apiFetch('/api/attendance/delete', {
+      json: { class_id: classId, subject_id: subjectId, tanggal },
     })
       .then((res) => res.json())
       .then((data) => {
@@ -549,7 +553,7 @@ class StorageManager {
     error?: string;
   }> {
     try {
-      const res = await fetch(`/api/students/${studentId}/attendance-eligibility`);
+      const res = await apiFetch(`/api/students/${studentId}/attendance-eligibility`);
       const data = await res.json();
       return data;
     } catch (err: any) {
@@ -573,14 +577,13 @@ class StorageManager {
     message?: string;
   }> {
     try {
-      const res = await fetch('/api/students/academic-clearance', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
+      // Operator & hak override ditentukan server dari token sesi.
+      const res = await apiFetch('/api/students/academic-clearance', {
+        json: {
           student_id: studentId,
           admin_override: Boolean(options?.admin_override),
           override_reason: options?.override_reason,
-        }),
+        },
       });
       const data = await res.json();
       return data;
@@ -665,44 +668,42 @@ class StorageManager {
     return this.getItem<KetuaKelasToken[]>(STORAGE_KEYS.TOKENS, INITIAL_DELEGATION_TOKENS);
   }
 
-  createDelegationToken(classId: number, createdBy: number, expiryHours: number = 24): KetuaKelasToken {
+  /**
+   * Token delegasi DITERBITKAN SERVER (acak kriptografis, masa berlaku ditentukan
+   * server, hanya untuk Wali Kelas kelas tsb / Admin). Client tidak lagi membuat
+   * string token sendiri karena format lama mudah ditebak dan bisa dipalsukan.
+   */
+  async createDelegationToken(classId: number, expiryHours: number = 24): Promise<KetuaKelasToken> {
+    let res: Response;
+    try {
+      res = await apiFetch('/api/delegation/create', { json: { class_id: classId, expiry_hours: expiryHours } });
+    } catch {
+      throw new Error('Server tidak dapat dihubungi. Tautan delegasi hanya bisa dibuat saat online.');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success || !data.token) {
+      throw new Error(data?.error || `Gagal membuat tautan delegasi (status ${res.status}).`);
+    }
+    const newToken = data.token as KetuaKelasToken;
+
     const tokens = this.getDelegationTokens();
-    const tokenStr = `token-kk-${classId}-${Date.now().toString(36)}`;
-    const now = Date.now();
-    const expiresAtMillis = now + expiryHours * 60 * 60 * 1000;
-    const expiresAtIso = new Date(expiresAtMillis).toISOString();
-
-    const newToken: KetuaKelasToken = {
-      token: tokenStr,
-      class_id: classId,
-      status: 'aktif',
-      created_at: new Date(now).toISOString(),
-      created_by: createdBy,
-      expires_at: expiresAtIso,
-      expires_at_millis: expiresAtMillis,
-    };
-
     tokens.push(newToken);
     this.setItem(STORAGE_KEYS.TOKENS, tokens);
-    this.addAuditLog('Buat Delegasi', 'Absensi', `Token Kelas #${classId}`, `Token: ${tokenStr}, Masa Berlaku: ${expiryHours} Jam`);
+    this.addAuditLog(
+      'Buat Delegasi',
+      'Absensi',
+      `Token Kelas #${classId}`,
+      `Masa Berlaku s.d. ${newToken.expires_at || '-'}`
+    );
 
     // Simpan ke Cloud Firestore (agar dapat dibaca lintas-device oleh murid)
     try {
-      setDoc(doc(db, 'tokens', tokenStr), newToken).catch((err) => {
+      setDoc(doc(db, 'tokens', newToken.token), newToken).catch((err) => {
         console.warn('[Firebase] Gagal menyimpan token ke Firestore:', err);
       });
     } catch (e) {
       console.warn('[Firebase] Gagal init simpan token:', e);
     }
-
-    // Registrasi ke Server API (pencatatan server-side fallback)
-    try {
-      fetch('/api/tokens/register', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(newToken),
-      }).catch(() => {});
-    } catch (_) {}
 
     return newToken;
   }
