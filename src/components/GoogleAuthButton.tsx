@@ -54,16 +54,20 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({ onTokenChang
 
   if (googleUser && hasToken) {
     return (
-      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md text-xs text-emerald-800">
-        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-        <span className="font-medium hidden sm:inline">{googleUser.email}</span>
-        <span className="text-[10px] text-emerald-600 font-semibold">(Docs & Sheets Aktif)</span>
+      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md text-xs text-emerald-800 min-h-11 sm:min-h-0">
+        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+        <span className="font-medium hidden lg:inline truncate max-w-[140px]">{googleUser.email}</span>
+        <span className="text-[10px] text-emerald-600 font-semibold hidden sm:inline whitespace-nowrap">
+          Docs &amp; Sheets Aktif
+        </span>
+        <span className="text-[10px] text-emerald-600 font-semibold sm:hidden">Aktif</span>
         <button
           onClick={handleSignOut}
           title="Putuskan Hubungan Google Workspace"
-          className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded hover:bg-emerald-100"
+          aria-label="Putuskan Hubungan Google Workspace"
+          className="text-emerald-700 hover:text-emerald-900 min-h-8 min-w-8 flex items-center justify-center rounded hover:bg-emerald-100 shrink-0"
         >
-          <LogOut className="w-3 h-3" />
+          <LogOut className="w-3.5 h-3.5" />
         </button>
       </div>
     );
@@ -73,16 +77,17 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({ onTokenChang
     <button
       onClick={handleSignIn}
       disabled={isLoading}
-      className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md shadow-xs transition-colors"
+      className="flex items-center gap-2 px-3 min-h-11 sm:min-h-0 sm:py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-md shadow-xs transition-colors"
       title="Hubungkan Google Drive, Google Docs & Google Sheets"
     >
-      <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 48 48">
         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
         <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
         <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
         <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
       </svg>
-      <span>{isLoading ? 'Menghubungkan...' : 'Google Workspace'}</span>
+      <span className="hidden sm:inline">{isLoading ? 'Menghubungkan...' : 'Google Workspace'}</span>
+      <span className="sm:hidden">{isLoading ? '...' : 'Google'}</span>
     </button>
   );
 };

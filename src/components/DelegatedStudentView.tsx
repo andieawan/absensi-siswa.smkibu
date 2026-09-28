@@ -323,7 +323,58 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Tampilan kartu untuk mobile/tablet: tombol status berukuran 44x44 agar nyaman disentuh */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {students.map((s, idx) => {
+              const curr = studentStatuses[s.id] || { status: 'H', notes: '' };
+              return (
+                <div key={s.id} className="p-3 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 font-mono text-xs w-5 shrink-0">{idx + 1}</span>
+                    <span className="font-medium text-slate-900 text-sm truncate">{s.nama}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {(['H', 'I', 'S', 'A'] as AttendanceStatus[]).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => handleStatusChange(s.id, st)}
+                        aria-label={`Status ${st}`}
+                        className={`flex-1 min-h-11 rounded-lg text-sm font-bold font-mono transition-all ${
+                          curr.status === st
+                            ? st === 'H'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : st === 'I'
+                              ? 'bg-sky-600 text-white shadow-xs'
+                              : st === 'S'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-rose-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Keterangan (cth: izin urusan keluarga / sakit demam)"
+                    value={curr.notes}
+                    onChange={(e) =>
+                      setStudentStatuses((prev) => ({
+                        ...prev,
+                        [s.id]: { ...prev[s.id], notes: e.target.value },
+                      }))
+                    }
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-indigo-500"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tampilan tabel untuk tablet/desktop */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
                 <tr>

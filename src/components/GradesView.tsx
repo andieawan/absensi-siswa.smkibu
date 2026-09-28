@@ -597,7 +597,55 @@ export const GradesView: React.FC<GradesViewProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Tampilan kartu untuk mobile/tablet: matriks nilai lebih mudah dibaca sebagai daftar per siswa */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {activeStudents.map((s, idx) => {
+              let numSum = 0;
+              let numCount = 0;
+              const activityRows = currentActivities.map((act) => {
+                const val = allGradeValues.find(
+                  (v) => v.activity_id === act.id && v.student_id === s.id
+                )?.nilai || '-';
+                if (act.tipe_skala === 'angka') {
+                  const n = parseFloat(val);
+                  if (!isNaN(n)) {
+                    numSum += n;
+                    numCount++;
+                  }
+                }
+                return { act, val };
+              });
+              const avg = numCount > 0 ? (numSum / numCount).toFixed(1) : '-';
+
+              return (
+                <div key={s.id} className="p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-slate-400 font-mono text-[11px]">{idx + 1} · {s.nis}</div>
+                      <div className="font-semibold text-slate-900 text-sm truncate">{s.nama}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[10px] text-slate-500">Rata-Rata</div>
+                      <div className="font-mono font-bold text-slate-900 tabular-nums">{avg}</div>
+                    </div>
+                  </div>
+                  {activityRows.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      {activityRows.map(({ act, val }) => (
+                        <div key={act.id} className="flex items-center justify-between bg-slate-50 rounded px-2 py-1.5 text-xs">
+                          <span className="text-slate-500 truncate mr-2">{act.nama_kegiatan}</span>
+                          <span className="font-mono font-semibold text-slate-900 tabular-nums shrink-0">{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tampilan tabel untuk tablet/desktop */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-medium">

@@ -53,7 +53,7 @@ export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 space-y-4 border border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
             <KeyRound className="w-4 h-4 text-indigo-600" />
@@ -61,7 +61,7 @@ export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-lg font-bold leading-none"
+            className="text-slate-400 hover:text-slate-700 min-h-9 min-w-9 flex items-center justify-center text-lg font-bold leading-none"
             aria-label="Tutup"
           >
             &times;
@@ -126,14 +126,14 @@ export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+              className="px-3 min-h-11 sm:min-h-0 sm:py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isVerifying}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-xs disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 min-h-11 sm:min-h-0 sm:py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-xs disabled:opacity-50"
             >
               <UserCheck className="w-3.5 h-3.5" />
               <span>{isVerifying ? 'Memverifikasi...' : 'Verifikasi & Beralih'}</span>

@@ -46,20 +46,20 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Zone 1: Single text element wordmark */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-base shadow-xs">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
               GA
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold tracking-tight text-slate-900">
+                <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 truncate">
                   go_absen_siswa
                 </span>
-                <span className="text-xs text-slate-500 hidden sm:inline">
+                <span className="text-xs text-slate-500 hidden lg:inline">
                   · Node.js & MySQL
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 leading-none">
+              <p className="text-[11px] text-slate-500 leading-none hidden sm:block truncate">
                 Sistem Absensi & Penilaian Sekolah
               </p>
             </div>
@@ -161,59 +161,105 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* Zone 3: Active User Switcher & Actions */}
-          <div className="flex items-center gap-2">
-            {!isDelegatedMode && (
-              <div className="flex items-center gap-2">
-                <GoogleAuthButton />
+          {/* Zone 3: Active User Switcher & Actions (desktop/tablet — baris terpisah di mobile) */}
+          {!isDelegatedMode && (
+            <div className="hidden md:flex items-center gap-2">
+              <GoogleAuthButton />
 
-                <div className="relative flex items-center">
-                  <UserCog className="w-4 h-4 text-slate-400 absolute left-2 pointer-events-none" />
-                  <select
-                    value={currentUser.id}
-                    onChange={(e) => {
-                      const targetId = Number(e.target.value);
-                      if (targetId !== currentUser.id) {
-                        onRequestSwitchUser(targetId);
-                      }
-                    }}
-                    aria-label="Pilih Akun / Peran Pengguna"
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 hover:bg-slate-100 transition-colors focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
-                  >
-                    {allUsers.map((u) => {
-                      const roleList = u.roles.join(', ');
-                      const waliLabel = u.kelas_wali_id ? ' (Wali XI DKV 1)' : '';
-                      return (
-                        <option key={u.id} value={u.id}>
-                          {u.nama} · {roleList}
-                          {waliLabel}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                <button
-                  onClick={onResetDemo}
-                  title="Reset Data Demo ke Kondisi Awal"
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+              <div className="relative flex items-center">
+                <UserCog className="w-4 h-4 text-slate-400 absolute left-2 pointer-events-none" />
+                <select
+                  value={currentUser.id}
+                  onChange={(e) => {
+                    const targetId = Number(e.target.value);
+                    if (targetId !== currentUser.id) {
+                      onRequestSwitchUser(targetId);
+                    }
+                  }}
+                  aria-label="Pilih Akun / Peran Pengguna"
+                  className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 hover:bg-slate-100 transition-colors focus:ring-1 focus:ring-slate-900 focus:outline-hidden max-w-[220px]"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  onClick={onLogout}
-                  title="Keluar / Kunci Sesi"
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">Keluar</span>
-                </button>
+                  {allUsers.map((u) => {
+                    const roleList = u.roles.join(', ');
+                    const waliLabel = u.kelas_wali_id ? ' (Wali XI DKV 1)' : '';
+                    return (
+                      <option key={u.id} value={u.id}>
+                        {u.nama} · {roleList}
+                        {waliLabel}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
-            )}
-          </div>
+
+              <button
+                onClick={onResetDemo}
+                title="Reset Data Demo ke Kondisi Awal"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                onClick={onLogout}
+                title="Keluar / Kunci Sesi"
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Keluar</span>
+              </button>
+            </div>
+          )}
+
+          {/* Zone 3 versi mobile: hanya tombol ganti akun + keluar, target sentuh 44px */}
+          {!isDelegatedMode && (
+            <div className="flex md:hidden items-center gap-1.5">
+              <div className="relative flex items-center">
+                <select
+                  value={currentUser.id}
+                  onChange={(e) => {
+                    const targetId = Number(e.target.value);
+                    if (targetId !== currentUser.id) {
+                      onRequestSwitchUser(targetId);
+                    }
+                  }}
+                  aria-label="Pilih Akun / Peran Pengguna"
+                  className="min-h-11 pl-2.5 pr-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-hidden max-w-[110px]"
+                >
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nama}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={onLogout}
+                title="Keluar / Kunci Sesi"
+                aria-label="Keluar"
+                className="min-h-11 min-w-11 flex items-center justify-center text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Baris aksi mobile: Google Workspace + reset demo (di bawah header agar tidak padat) */}
+      {!isDelegatedMode && (
+        <div className="md:hidden flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 bg-white">
+          <GoogleAuthButton />
+          <button
+            onClick={onResetDemo}
+            title="Reset Data Demo ke Kondisi Awal"
+            aria-label="Reset Data Demo"
+            className="min-h-11 min-w-11 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors shrink-0"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Mobile nav bar */}
       {!isDelegatedMode && (

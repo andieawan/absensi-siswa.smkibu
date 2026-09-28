@@ -486,92 +486,144 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
           </div>
         </div>
 
-        {/* Student Rows Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-medium">
-                <th className="py-2.5 px-3 w-10 text-center">No</th>
-                <th className="py-2.5 px-3 w-32">NIS</th>
-                <th className="py-2.5 px-3">Nama Siswa</th>
-                <th className="py-2.5 px-3 w-12 text-center">JK</th>
-                <th className="py-2.5 px-3 w-64 text-center">Status Presensi</th>
-                <th className="py-2.5 px-3">Catatan Khusus</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {activeStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    Tidak ada siswa aktif di kelas ini.
-                  </td>
-                </tr>
-              ) : (
-                activeStudents.map((student, idx) => {
-                  const curr = attendanceState[student.id] || { status: 'H', notes: '' };
-                  return (
-                    <tr
-                      key={student.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${
-                        curr.status === 'A'
-                          ? 'bg-rose-50/30'
-                          : curr.status === 'S'
-                          ? 'bg-amber-50/20'
-                          : ''
-                      }`}
-                    >
-                      <td className="py-2.5 px-3 text-center font-mono text-slate-400">
-                        {idx + 1}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">
-                        {student.nis}
-                      </td>
-                      <td className="py-2.5 px-3 font-medium text-slate-900">
-                        {student.nama}
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono">
-                        {student.jk}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center justify-center gap-1">
-                          {(['H', 'I', 'S', 'A'] as AttendanceStatus[]).map((st) => (
-                            <button
-                              key={st}
-                              type="button"
-                              onClick={() => handleStatusChange(student.id, st)}
-                              className={`w-9 h-7 rounded text-xs font-bold font-mono transition-all ${
-                                curr.status === st
-                                  ? st === 'H'
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : st === 'I'
-                                    ? 'bg-sky-600 text-white shadow-xs'
-                                    : st === 'S'
-                                    ? 'bg-amber-600 text-white shadow-xs'
-                                    : 'bg-rose-600 text-white shadow-xs'
-                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                              }`}
-                            >
-                              {st}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <input
-                          type="text"
-                          placeholder="cth: izin surat dokter / lomba"
-                          value={curr.notes || ''}
-                          onChange={(e) => handleNotesChange(student.id, e.target.value)}
-                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-hidden focus:ring-1 focus:ring-slate-900"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Student Rows: kartu untuk mobile/tablet, tabel untuk desktop */}
+        {activeStudents.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs">
+            Tidak ada siswa aktif di kelas ini.
+          </div>
+        ) : (
+          <>
+            <div className="md:hidden divide-y divide-slate-100">
+              {activeStudents.map((student, idx) => {
+                const curr = attendanceState[student.id] || { status: 'H', notes: '' };
+                return (
+                  <div
+                    key={student.id}
+                    className={`p-3 space-y-2.5 ${
+                      curr.status === 'A' ? 'bg-rose-50/30' : curr.status === 'S' ? 'bg-amber-50/20' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-mono text-xs w-5 shrink-0">{idx + 1}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900 text-sm truncate">{student.nama}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{student.nis} · {student.jk}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {(['H', 'I', 'S', 'A'] as AttendanceStatus[]).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => handleStatusChange(student.id, st)}
+                          aria-label={`Status ${st}`}
+                          className={`flex-1 min-h-11 rounded-lg text-sm font-bold font-mono transition-all ${
+                            curr.status === st
+                              ? st === 'H'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : st === 'I'
+                                ? 'bg-sky-600 text-white shadow-xs'
+                                : st === 'S'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-rose-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                          }`}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Catatan (cth: izin surat dokter / lomba)"
+                      value={curr.notes || ''}
+                      onChange={(e) => handleNotesChange(student.id, e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-medium">
+                    <th className="py-2.5 px-3 w-10 text-center">No</th>
+                    <th className="py-2.5 px-3 w-32">NIS</th>
+                    <th className="py-2.5 px-3">Nama Siswa</th>
+                    <th className="py-2.5 px-3 w-12 text-center">JK</th>
+                    <th className="py-2.5 px-3 w-64 text-center">Status Presensi</th>
+                    <th className="py-2.5 px-3">Catatan Khusus</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activeStudents.map((student, idx) => {
+                    const curr = attendanceState[student.id] || { status: 'H', notes: '' };
+                    return (
+                      <tr
+                        key={student.id}
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          curr.status === 'A'
+                            ? 'bg-rose-50/30'
+                            : curr.status === 'S'
+                            ? 'bg-amber-50/20'
+                            : ''
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 text-center font-mono text-slate-400">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          {student.nis}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-900">
+                          {student.nama}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-slate-500 font-mono">
+                          {student.jk}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center justify-center gap-1">
+                            {(['H', 'I', 'S', 'A'] as AttendanceStatus[]).map((st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => handleStatusChange(student.id, st)}
+                                className={`w-9 h-7 rounded text-xs font-bold font-mono transition-all ${
+                                  curr.status === st
+                                    ? st === 'H'
+                                      ? 'bg-emerald-600 text-white shadow-xs'
+                                      : st === 'I'
+                                      ? 'bg-sky-600 text-white shadow-xs'
+                                      : st === 'S'
+                                      ? 'bg-amber-600 text-white shadow-xs'
+                                      : 'bg-rose-600 text-white shadow-xs'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            placeholder="cth: izin surat dokter / lomba"
+                            value={curr.notes || ''}
+                            onChange={(e) => handleNotesChange(student.id, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-slate-200 rounded-md focus:outline-hidden focus:ring-1 focus:ring-slate-900"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {/* Form Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -695,7 +747,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       {/* Ketua Kelas Delegation Modal (PRD 6.2) */}
       {showDelegationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h2 className="text-sm font-bold text-slate-900">
                 Tautan Delegasi Ketua Kelas
@@ -703,7 +755,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDelegationModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+                aria-label="Tutup"
+                className="text-slate-400 hover:text-slate-700 min-h-9 min-w-9 flex items-center justify-center text-lg font-bold"
               >
                 &times;
               </button>
