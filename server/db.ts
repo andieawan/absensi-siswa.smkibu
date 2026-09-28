@@ -1,20 +1,37 @@
 // ============================================================================
-// Lapisan Persistensi SQLite (Node.js built-in `node:sqlite`)
+// Lapisan Persistensi — mendukung SQLite (default) ATAU MySQL, dipilih lewat
+// environment variable DB_DRIVER.
 // ============================================================================
-// Menggantikan penyimpanan in-memory (array) pada server.ts dengan database
-// SQL sungguhan yang persisten di disk, sehingga data tidak hilang saat
-// server di-restart. Menggunakan modul bawaan Node.js `node:sqlite` (stabil
-// sejak Node 22.5, tidak butuh dependency eksternal seperti better-sqlite3).
+// DB_DRIVER=sqlite (default): pakai modul bawaan Node.js `node:sqlite`
+// (DatabaseSync), tidak butuh dependency eksternal, data tersimpan di satu
+// file lokal (DB_PATH). Cocok untuk server fisik sekolah single-instance.
 //
-// Catatan deployment: SQLite menyimpan data sebagai satu file di disk lokal.
-// Jika di-deploy ke platform dengan filesystem ephemeral (misalnya Cloud Run
-// tanpa mounted volume), file ini akan hilang setiap kali instance di-recycle.
-// Untuk deployment produksi multi-instance, arahkan DB_PATH ke sebuah
-// persistent volume, atau migrasikan ke MySQL/Postgres terkelola.
+// DB_DRIVER=mysql: pakai server MySQL/MariaDB sungguhan lewat mysql2. Cocok
+// kalau sekolah sudah punya server MySQL sendiri, atau butuh multi-instance /
+// akses dari luar server aplikasi. Kredensial diatur lewat MYSQL_HOST,
+// MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE (lihat .env.example).
+//
+// CATATAN TEKNIS: mysql2 murni asinkron (tidak ada driver MySQL sinkron resmi
+// untuk Node.js), sedangkan seluruh `server.ts` (80+ titik panggilan `Repo.*`)
+// ditulis dengan asumsi API SINKRON seperti `node:sqlite`. Supaya server.ts
+// TIDAK perlu ditulis ulang jadi async di semua titik itu (risiko regresi
+// besar untuk aplikasi yang sudah dipakai), query MySQL dijalankan di worker
+// thread terpisah (server/mysqlWorker.ts) dan dipanggil dari sini secara
+// SINKRON lewat `synckit` (blocking via Atomics.wait, bukan spin-loop). Dari
+// sudut pandang Repo & server.ts, kedua driver terasa identik: sama-sama
+// panggilan sinkron biasa.
+//
+// Kalau di-deploy ke platform dengan filesystem ephemeral (mis. Cloud Run
+// tanpa mounted volume) dan tetap memilih SQLite, file database akan hilang
+// setiap kali instance di-recycle — pakai MySQL terkelola atau persistent
+// volume untuk deployment produksi multi-instance.
 
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { createSyncFn } from 'synckit';
 import {
   INITIAL_CLASSES,
   INITIAL_STUDENTS,
@@ -44,24 +61,97 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export type DbDriverKind = 'sqlite' | 'mysql';
+export const DB_DRIVER: DbDriverKind =
+  (process.env.DB_DRIVER || 'sqlite').trim().toLowerCase() === 'mysql' ? 'mysql' : 'sqlite';
+
+// ============================================================================
+// Driver: SQLite (node:sqlite) — dibuat hanya kalau memang dipilih, supaya
+// tidak membuat file database SQLite yang tidak terpakai saat DB_DRIVER=mysql.
+// ============================================================================
 const DB_PATH = process.env.DB_PATH || path.resolve(__dirname, '..', 'data', 'absensi.sqlite3');
 
-// Pastikan folder data/ ada sebelum membuka file database.
-import fs from 'fs';
-import { createHash, randomBytes } from 'node:crypto';
-const dataDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+export let db: DatabaseSync | null = null;
+
+if (DB_DRIVER === 'sqlite') {
+  const dataDir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  db = new DatabaseSync(DB_PATH);
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA foreign_keys = ON;');
 }
 
-export const db = new DatabaseSync(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
+// ============================================================================
+// Driver: MySQL — query dijalankan di worker thread lewat synckit (lihat
+// header komentar di atas & server/mysqlWorker.ts untuk alasannya).
+// ============================================================================
+type MysqlWorkerFn = (op: 'run' | 'get' | 'all' | 'exec', sql: string, params: any[]) => {
+  rows?: any[];
+  insertId?: number;
+  affectedRows?: number;
+};
+
+let mysqlQuery: MysqlWorkerFn | null = null;
+if (DB_DRIVER === 'mysql') {
+  const workerPath = path.resolve(__dirname, 'mysqlWorker.ts');
+  mysqlQuery = createSyncFn<MysqlWorkerFn>(workerPath, { timeout: 20_000 });
+}
 
 // ============================================================================
-// Skema Tabel
+// Fasad query generik: satu set fungsi yang dipakai Repo di bawah, dispatch
+// ke driver yang aktif. Ini satu-satunya tempat yang "tahu" perbedaan sqlite
+// vs mysql di level eksekusi query — sisa file ini (Repo, mapper, dst) murni
+// SQL portable & tidak peduli driver mana yang aktif.
 // ============================================================================
-db.exec(`
+function dbRun(sql: string, params: any[] = []): { lastInsertRowid: number; changes: number } {
+  if (DB_DRIVER === 'mysql') {
+    const r = mysqlQuery!('run', sql, params);
+    return { lastInsertRowid: Number(r.insertId || 0), changes: Number(r.affectedRows || 0) };
+  }
+  const info = db!.prepare(sql).run(...params);
+  return { lastInsertRowid: Number(info.lastInsertRowid || 0), changes: Number(info.changes || 0) };
+}
+
+function dbGet<T = any>(sql: string, params: any[] = []): T | undefined {
+  if (DB_DRIVER === 'mysql') {
+    const rows = mysqlQuery!('all', sql, params).rows || [];
+    return (rows[0] as T) ?? undefined;
+  }
+  return db!.prepare(sql).get(...params) as T | undefined;
+}
+
+function dbAll<T = any>(sql: string, params: any[] = []): T[] {
+  if (DB_DRIVER === 'mysql') {
+    return (mysqlQuery!('all', sql, params).rows || []) as T[];
+  }
+  return db!.prepare(sql).all(...params) as T[];
+}
+
+/** Statement DDL tunggal tanpa parameter (schema, PRAGMA-independent). */
+function dbExec(sql: string): void {
+  if (DB_DRIVER === 'mysql') {
+    mysqlQuery!('exec', sql, []);
+    return;
+  }
+  db!.exec(sql);
+}
+
+/** Pecah blok DDL multi-statement jadi statement individual untuk driver MySQL. */
+function splitStatements(sql: string): string[] {
+  return sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+// ============================================================================
+// Skema Tabel — dua varian: SQLite (asli) & MySQL (tipe kolom disesuaikan:
+// TEXT yang jadi PRIMARY KEY/UNIQUE wajib VARCHAR bagi InnoDB, AUTOINCREMENT
+// jadi AUTO_INCREMENT, dst). Keduanya secara LOGIS identik.
+// ============================================================================
+const SCHEMA_SQLITE = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -178,9 +268,6 @@ CREATE TABLE IF NOT EXISTS school_settings (
   last_backup_status TEXT
 );
 
--- Token sesi server-side (Bearer token), diterbitkan oleh POST /api/auth/login
--- setelah verifikasi password berhasil. Dipakai untuk melindungi endpoint yang
--- membaca/menulis seluruh data sekolah (mis. /api/sync/pull & /api/sync/push).
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -188,10 +275,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at_millis INTEGER NOT NULL
 );
 
--- Akses baca-saja untuk Orang Tua/Wali Murid, per SISWA (bukan per kelas
--- seperti token delegasi Ketua Kelas). Sengaja TIDAK ada masa kedaluwarsa
--- otomatis — orang tua perlu bisa cek kapan saja, bukan cuma sekali dalam
--- 24 jam. Wali kelas/Administrator yang mencabut akses lewat kolom status.
 CREATE TABLE IF NOT EXISTS parent_access_tokens (
   token TEXT PRIMARY KEY,
   student_id INTEGER NOT NULL,
@@ -200,105 +283,258 @@ CREATE TABLE IF NOT EXISTS parent_access_tokens (
   created_by INTEGER,
   revoked_at TEXT
 );
-`);
+`;
+
+const SCHEMA_MYSQL = `
+CREATE TABLE IF NOT EXISTS users (
+  id INT PRIMARY KEY,
+  username VARCHAR(191) UNIQUE NOT NULL,
+  password_hash VARCHAR(255),
+  nama VARCHAR(191) NOT NULL,
+  kelas_wali_id INT,
+  foto_profil_url VARCHAR(500),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(32) NOT NULL,
+  roles TEXT NOT NULL,
+  subjects TEXT NOT NULL,
+  classes TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS classes (
+  id INT PRIMARY KEY,
+  name VARCHAR(191) NOT NULL,
+  jurusan VARCHAR(191),
+  angkatan VARCHAR(32),
+  tahun_ajaran VARCHAR(32),
+  semester VARCHAR(32)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS subjects (
+  id INT PRIMARY KEY,
+  name VARCHAR(191) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS students (
+  id INT PRIMARY KEY,
+  nis VARCHAR(64) NOT NULL,
+  nama VARCHAR(191) NOT NULL,
+  jk VARCHAR(4) NOT NULL,
+  class_id INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at VARCHAR(32) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS attendance (
+  id INT PRIMARY KEY,
+  student_id INT NOT NULL,
+  class_id INT NOT NULL,
+  subject_id INT NULL,
+  tanggal VARCHAR(10) NOT NULL,
+  status VARCHAR(4) NOT NULL,
+  recorded_by INT,
+  recorded_via VARCHAR(64),
+  notes TEXT,
+  created_at VARCHAR(32) NOT NULL,
+  updated_at VARCHAR(32) NOT NULL,
+  created_at_millis BIGINT,
+  UNIQUE KEY uniq_attendance (student_id, subject_id, tanggal)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS grade_activities (
+  id VARCHAR(64) PRIMARY KEY,
+  teacher_id INT NOT NULL,
+  subject_id INT NOT NULL,
+  class_id INT NOT NULL,
+  nama_kegiatan VARCHAR(191) NOT NULL,
+  tanggal_kegiatan VARCHAR(10),
+  tipe_skala VARCHAR(16) NOT NULL,
+  created_at VARCHAR(32) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS grade_values (
+  activity_id VARCHAR(64) NOT NULL,
+  student_id INT NOT NULL,
+  nilai VARCHAR(16) NOT NULL,
+  PRIMARY KEY (activity_id, student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS teacher_subject_class_pairing (
+  user_id INT NOT NULL,
+  subject_id INT NOT NULL,
+  class_id INT NOT NULL,
+  PRIMARY KEY (user_id, subject_id, class_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ketua_kelas_tokens (
+  token VARCHAR(128) PRIMARY KEY,
+  class_id INT NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  created_at VARCHAR(32) NOT NULL,
+  created_by INT,
+  expires_at VARCHAR(32),
+  expires_at_millis BIGINT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  timestamp VARCHAR(32) NOT NULL,
+  action VARCHAR(191) NOT NULL,
+  module VARCHAR(64) NOT NULL,
+  actor VARCHAR(191),
+  details TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sequences (
+  entity VARCHAR(64) PRIMARY KEY,
+  value INT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS school_settings (
+  id INT PRIMARY KEY,
+  school_name VARCHAR(191),
+  logo_url VARCHAR(500),
+  tahun_ajaran VARCHAR(32),
+  semester VARCHAR(32),
+  kepsek_nama VARCHAR(191),
+  bk_nama VARCHAR(191),
+  backup_retention_weeks INT,
+  last_backup_date VARCHAR(32),
+  last_backup_status VARCHAR(16)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token VARCHAR(128) PRIMARY KEY,
+  user_id INT NOT NULL,
+  created_at VARCHAR(32) NOT NULL,
+  expires_at_millis BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS parent_access_tokens (
+  token VARCHAR(128) PRIMARY KEY,
+  student_id INT NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'aktif',
+  created_at VARCHAR(32) NOT NULL,
+  created_by INT,
+  revoked_at VARCHAR(32)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`;
+
+function initSchema() {
+  if (DB_DRIVER === 'mysql') {
+    for (const stmt of splitStatements(SCHEMA_MYSQL)) dbExec(stmt);
+  } else {
+    dbExec(SCHEMA_SQLITE);
+  }
+}
+initSchema();
 
 // ============================================================================
 // Seeding: hanya dijalankan sekali, saat tabel users masih kosong
 // ============================================================================
 function seedIfEmpty() {
-  const countRow = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
-  if (countRow.c > 0) return;
+  const countRow = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM users');
+  if ((countRow?.c || 0) > 0) return;
 
-  const insertUser = db.prepare(
-    `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
   for (const u of INITIAL_USERS as User[]) {
-    insertUser.run(
-      u.id,
-      u.username,
-      u.password_hash ?? null,
-      u.nama,
-      u.kelas_wali_id ?? null,
-      u.foto_profil_url ?? null,
-      u.is_active ? 1 : 0,
-      u.created_at,
-      JSON.stringify(u.roles || []),
-      JSON.stringify(u.subjects || []),
-      JSON.stringify(u.classes || [])
+    dbRun(
+      `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        u.id,
+        u.username,
+        u.password_hash ?? null,
+        u.nama,
+        u.kelas_wali_id ?? null,
+        u.foto_profil_url ?? null,
+        u.is_active ? 1 : 0,
+        u.created_at,
+        JSON.stringify(u.roles || []),
+        JSON.stringify(u.subjects || []),
+        JSON.stringify(u.classes || []),
+      ]
     );
   }
 
-  const insertClass = db.prepare(
-    `INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (?, ?, ?, ?, ?, ?)`
-  );
   for (const c of INITIAL_CLASSES as ClassItem[]) {
-    insertClass.run(c.id, c.name, c.jurusan, c.angkatan, c.tahun_ajaran, c.semester);
+    dbRun(`INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (?, ?, ?, ?, ?, ?)`, [
+      c.id,
+      c.name,
+      c.jurusan,
+      c.angkatan,
+      c.tahun_ajaran,
+      c.semester,
+    ]);
   }
 
-  const insertSubject = db.prepare(`INSERT INTO subjects (id, name) VALUES (?, ?)`);
   for (const s of INITIAL_SUBJECTS as Subject[]) {
-    insertSubject.run(s.id, s.name);
+    dbRun(`INSERT INTO subjects (id, name) VALUES (?, ?)`, [s.id, s.name]);
   }
 
-  const insertStudent = db.prepare(
-    `INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
   for (const s of INITIAL_STUDENTS as Student[]) {
-    insertStudent.run(s.id, s.nis, s.nama, s.jk, s.class_id, s.status, s.created_at);
+    dbRun(`INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+      s.id,
+      s.nis,
+      s.nama,
+      s.jk,
+      s.class_id,
+      s.status,
+      s.created_at,
+    ]);
   }
 
-  const insertAttendance = db.prepare(
-    `INSERT INTO attendance (id, student_id, class_id, subject_id, tanggal, status, recorded_by, recorded_via, notes, created_at, updated_at, created_at_millis)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
   for (const a of INITIAL_ATTENDANCE as AttendanceRecord[]) {
-    insertAttendance.run(
-      a.id,
-      a.student_id,
-      a.class_id,
-      a.subject_id ?? null,
-      a.tanggal,
-      a.status,
-      a.recorded_by ?? null,
-      a.recorded_via ?? null,
-      a.notes ?? null,
-      a.created_at,
-      a.updated_at,
-      a.created_at_millis ?? null
+    dbRun(
+      `INSERT INTO attendance (id, student_id, class_id, subject_id, tanggal, status, recorded_by, recorded_via, notes, created_at, updated_at, created_at_millis)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        a.id,
+        a.student_id,
+        a.class_id,
+        a.subject_id ?? null,
+        a.tanggal,
+        a.status,
+        a.recorded_by ?? null,
+        a.recorded_via ?? null,
+        a.notes ?? null,
+        a.created_at,
+        a.updated_at,
+        a.created_at_millis ?? null,
+      ]
     );
   }
 
-  const insertActivity = db.prepare(
-    `INSERT INTO grade_activities (id, teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  );
   for (const a of INITIAL_GRADE_ACTIVITIES as GradeActivity[]) {
-    insertActivity.run(a.id, a.teacher_id, a.subject_id, a.class_id, a.nama_kegiatan, a.tanggal_kegiatan, a.tipe_skala, a.created_at);
+    dbRun(
+      `INSERT INTO grade_activities (id, teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [a.id, a.teacher_id, a.subject_id, a.class_id, a.nama_kegiatan, a.tanggal_kegiatan, a.tipe_skala, a.created_at]
+    );
   }
 
-  const insertGradeValue = db.prepare(
-    `INSERT INTO grade_values (activity_id, student_id, nilai) VALUES (?, ?, ?)`
-  );
   for (const g of INITIAL_GRADE_VALUES as GradeValue[]) {
-    insertGradeValue.run(g.activity_id, g.student_id, g.nilai);
+    dbRun(`INSERT INTO grade_values (activity_id, student_id, nilai) VALUES (?, ?, ?)`, [
+      g.activity_id,
+      g.student_id,
+      g.nilai,
+    ]);
   }
 
-  const insertPairing = db.prepare(
-    `INSERT INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)`
-  );
   for (const p of INITIAL_PAIRINGS as TeacherPairing[]) {
-    insertPairing.run(p.user_id, p.subject_id, p.class_id);
+    dbRun(`INSERT INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)`, [
+      p.user_id,
+      p.subject_id,
+      p.class_id,
+    ]);
   }
 
-  const insertToken = db.prepare(
-    `INSERT INTO ketua_kelas_tokens (token, class_id, status, created_at, created_by, expires_at, expires_at_millis)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
   for (const t of INITIAL_DELEGATION_TOKENS as KetuaKelasToken[]) {
     const expiresAt = t.expires_at || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
     const expiresAtMillis = t.expires_at_millis || new Date(expiresAt).getTime();
-    insertToken.run(t.token, t.class_id, t.status, t.created_at, t.created_by, expiresAt, expiresAtMillis);
+    dbRun(
+      `INSERT INTO ketua_kelas_tokens (token, class_id, status, created_at, created_by, expires_at, expires_at_millis)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [t.token, t.class_id, t.status, t.created_at, t.created_by, expiresAt, expiresAtMillis]
+    );
   }
 
   const seqRows: Record<string, number> = {
@@ -309,25 +545,25 @@ function seedIfEmpty() {
     subjects: Math.max(10, ...(INITIAL_SUBJECTS as Subject[]).map((s) => s.id)),
     audit_logs: 100,
   };
-  const insertSeq = db.prepare(`INSERT OR REPLACE INTO sequences (entity, value) VALUES (?, ?)`);
   for (const [entity, value] of Object.entries(seqRows)) {
-    insertSeq.run(entity, value);
+    dbRun(`INSERT INTO sequences (entity, value) VALUES (?, ?)`, [entity, value]);
   }
 
   const s = INITIAL_SCHOOL_SETTINGS as SchoolSettings;
-  db.prepare(
-    `INSERT OR REPLACE INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    s.school_name,
-    s.logo_url,
-    s.tahun_ajaran,
-    s.semester,
-    s.kepsek_nama,
-    s.bk_nama,
-    s.backup_retention_weeks,
-    s.last_backup_date ?? null,
-    s.last_backup_status ?? null
+  dbRun(
+    `INSERT INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      s.school_name,
+      s.logo_url,
+      s.tahun_ajaran,
+      s.semester,
+      s.kepsek_nama,
+      s.bk_nama,
+      s.backup_retention_weeks,
+      s.last_backup_date ?? null,
+      s.last_backup_status ?? null,
+    ]
   );
 }
 
@@ -337,8 +573,8 @@ function seedIfEmpty() {
  * environment ADMIN_USERNAME + ADMIN_PASSWORD saat tabel users masih kosong.
  */
 function bootstrapProductionAdmin() {
-  const countRow = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
-  if (countRow.c > 0) return;
+  const countRow = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM users');
+  if ((countRow?.c || 0) > 0) return;
 
   const username = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD || '';
@@ -353,17 +589,18 @@ function bootstrapProductionAdmin() {
   // Format hash sama dengan src/services/auth.ts: "sha256:<salt>:<sha256(salt:password)>"
   const salt = randomBytes(16).toString('hex');
   const hash = createHash('sha256').update(`${salt}:${password}`).digest('hex');
-  db.prepare(
+  dbRun(
     `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
-     VALUES (1, ?, ?, ?, NULL, NULL, 1, ?, ?, '[]', '[]')`
-  ).run(
-    username,
-    `sha256:${salt}:${hash}`,
-    process.env.ADMIN_NAMA || 'Administrator',
-    new Date().toISOString().replace('T', ' ').substring(0, 19),
-    JSON.stringify(['superadmin', 'admin'])
+     VALUES (1, ?, ?, ?, NULL, NULL, 1, ?, ?, '[]', '[]')`,
+    [
+      username,
+      `sha256:${salt}:${hash}`,
+      process.env.ADMIN_NAMA || 'Administrator',
+      new Date().toISOString().replace('T', ' ').substring(0, 19),
+      JSON.stringify(['superadmin', 'admin']),
+    ]
   );
-  db.prepare(`INSERT OR REPLACE INTO sequences (entity, value) VALUES ('users', 10)`).run();
+  dbRun(`INSERT INTO sequences (entity, value) VALUES ('users', 10)`);
   console.log(`[DB] Akun Administrator pertama "${username}" dibuat dari environment. Hapus ADMIN_PASSWORD dari environment setelah login pertama.`);
 }
 
@@ -379,17 +616,15 @@ if (shouldSeedDemo) {
 // Helper: alokasi ID atomik (Single Source of Truth) via tabel `sequences`
 // ============================================================================
 export function allocateSequence(entity: string, count = 1): number[] {
-  const row = db.prepare('SELECT value FROM sequences WHERE entity = ?').get(entity) as
-    | { value: number }
-    | undefined;
+  const row = dbGet<{ value: number }>('SELECT value FROM sequences WHERE entity = ?', [entity]);
   const current = row ? row.value : 1000;
   const startId = current + 1;
   const next = current + count;
 
   if (row) {
-    db.prepare('UPDATE sequences SET value = ? WHERE entity = ?').run(next, entity);
+    dbRun('UPDATE sequences SET value = ? WHERE entity = ?', [next, entity]);
   } else {
-    db.prepare('INSERT INTO sequences (entity, value) VALUES (?, ?)').run(next, entity);
+    dbRun('INSERT INTO sequences (entity, value) VALUES (?, ?)', [next, entity]);
   }
 
   const allocated: number[] = [];
@@ -398,20 +633,27 @@ export function allocateSequence(entity: string, count = 1): number[] {
 }
 
 export function getSequencesStatus(): Record<string, number> {
-  const rows = db.prepare('SELECT entity, value FROM sequences').all() as { entity: string; value: number }[];
+  const rows = dbAll<{ entity: string; value: number }>('SELECT entity, value FROM sequences');
   const out: Record<string, number> = {};
   for (const r of rows) out[r.entity] = r.value;
   return out;
 }
 
 export function recordAudit(action: string, module: string, actor: string, details: string) {
-  db.prepare(
-    `INSERT INTO audit_log (timestamp, action, module, actor, details) VALUES (?, ?, ?, ?, ?)`
-  ).run(new Date().toISOString(), action, module, actor, details);
-  // Batasi retensi log agar file tidak tumbuh tanpa batas
-  db.exec(`
+  dbRun(`INSERT INTO audit_log (timestamp, action, module, actor, details) VALUES (?, ?, ?, ?, ?)`, [
+    new Date().toISOString(),
+    action,
+    module,
+    actor,
+    details,
+  ]);
+  // Batasi retensi log agar tabel tidak tumbuh tanpa batas. Ditulis lewat
+  // derived table (bukan langsung "... LIMIT ... " di dalam subquery IN/NOT
+  // IN) karena MySQL tidak mendukung LIMIT langsung di situ — bentuk ini
+  // portable untuk SQLite maupun MySQL.
+  dbRun(`
     DELETE FROM audit_log WHERE id NOT IN (
-      SELECT id FROM audit_log ORDER BY id DESC LIMIT 500
+      SELECT id FROM (SELECT id FROM audit_log ORDER BY id DESC LIMIT 500) AS keep_ids
     )
   `);
 }
@@ -538,107 +780,142 @@ function rowToSettings(row: any): SchoolSettings {
 }
 
 // ============================================================================
-// Data access API digunakan oleh server.ts
+// Data access API digunakan oleh server.ts — SQL di bawah ini portable untuk
+// SQLite maupun MySQL (tidak ada sintaks dialek-spesifik seperti
+// "ON CONFLICT" atau "INSERT OR IGNORE"; upsert dilakukan dengan pola
+// cek-lalu-update-atau-insert di level aplikasi).
 // ============================================================================
 export const Repo = {
   users: {
     all(): User[] {
-      return (db.prepare('SELECT * FROM users').all() as any[]).map(rowToUser);
+      return dbAll('SELECT * FROM users').map(rowToUser);
     },
     byId(id: number): User | undefined {
-      const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+      const row = dbGet('SELECT * FROM users WHERE id = ?', [id]);
       return row ? rowToUser(row) : undefined;
     },
     upsert(u: User) {
-      const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(u.id);
+      const existing = dbGet('SELECT id FROM users WHERE id = ?', [u.id]);
       if (existing) {
-        db.prepare(
-          `UPDATE users SET username = ?, password_hash = COALESCE(?, password_hash), nama = ?, kelas_wali_id = ?, foto_profil_url = ?, is_active = ?, roles = ?, subjects = ?, classes = ? WHERE id = ?`
-        ).run(
-          u.username,
-          u.password_hash ?? null,
-          u.nama,
-          u.kelas_wali_id ?? null,
-          u.foto_profil_url ?? null,
-          u.is_active ? 1 : 0,
-          JSON.stringify(u.roles || []),
-          JSON.stringify(u.subjects || []),
-          JSON.stringify(u.classes || []),
-          u.id
+        dbRun(
+          `UPDATE users SET username = ?, password_hash = COALESCE(?, password_hash), nama = ?, kelas_wali_id = ?, foto_profil_url = ?, is_active = ?, roles = ?, subjects = ?, classes = ? WHERE id = ?`,
+          [
+            u.username,
+            u.password_hash ?? null,
+            u.nama,
+            u.kelas_wali_id ?? null,
+            u.foto_profil_url ?? null,
+            u.is_active ? 1 : 0,
+            JSON.stringify(u.roles || []),
+            JSON.stringify(u.subjects || []),
+            JSON.stringify(u.classes || []),
+            u.id,
+          ]
         );
       } else {
-        db.prepare(
+        dbRun(
           `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          u.id,
-          u.username,
-          u.password_hash ?? null,
-          u.nama,
-          u.kelas_wali_id ?? null,
-          u.foto_profil_url ?? null,
-          u.is_active ? 1 : 0,
-          u.created_at,
-          JSON.stringify(u.roles || []),
-          JSON.stringify(u.subjects || []),
-          JSON.stringify(u.classes || [])
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            u.id,
+            u.username,
+            u.password_hash ?? null,
+            u.nama,
+            u.kelas_wali_id ?? null,
+            u.foto_profil_url ?? null,
+            u.is_active ? 1 : 0,
+            u.created_at,
+            JSON.stringify(u.roles || []),
+            JSON.stringify(u.subjects || []),
+            JSON.stringify(u.classes || []),
+          ]
         );
       }
     },
   },
   classes: {
     all(): ClassItem[] {
-      return (db.prepare('SELECT * FROM classes').all() as any[]).map(rowToClass);
+      return dbAll('SELECT * FROM classes').map(rowToClass);
     },
     byId(id: number): ClassItem | undefined {
-      const row = db.prepare('SELECT * FROM classes WHERE id = ?').get(id);
+      const row = dbGet('SELECT * FROM classes WHERE id = ?', [id]);
       return row ? rowToClass(row) : undefined;
     },
     upsert(c: ClassItem) {
-      db.prepare(
-        `INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, jurusan = excluded.jurusan, angkatan = excluded.angkatan, tahun_ajaran = excluded.tahun_ajaran, semester = excluded.semester`
-      ).run(c.id, c.name, c.jurusan, c.angkatan, c.tahun_ajaran, c.semester);
+      const existing = dbGet('SELECT id FROM classes WHERE id = ?', [c.id]);
+      if (existing) {
+        dbRun('UPDATE classes SET name = ?, jurusan = ?, angkatan = ?, tahun_ajaran = ?, semester = ? WHERE id = ?', [
+          c.name,
+          c.jurusan,
+          c.angkatan,
+          c.tahun_ajaran,
+          c.semester,
+          c.id,
+        ]);
+      } else {
+        dbRun('INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (?, ?, ?, ?, ?, ?)', [
+          c.id,
+          c.name,
+          c.jurusan,
+          c.angkatan,
+          c.tahun_ajaran,
+          c.semester,
+        ]);
+      }
     },
   },
   subjects: {
     all(): Subject[] {
-      return (db.prepare('SELECT * FROM subjects').all() as any[]).map(rowToSubject);
+      return dbAll('SELECT * FROM subjects').map(rowToSubject);
     },
     upsert(s: Subject) {
-      db.prepare(
-        `INSERT INTO subjects (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name`
-      ).run(s.id, s.name);
+      const existing = dbGet('SELECT id FROM subjects WHERE id = ?', [s.id]);
+      if (existing) {
+        dbRun('UPDATE subjects SET name = ? WHERE id = ?', [s.name, s.id]);
+      } else {
+        dbRun('INSERT INTO subjects (id, name) VALUES (?, ?)', [s.id, s.name]);
+      }
     },
   },
   students: {
     all(classId?: number): Student[] {
       const rows = classId
-        ? db.prepare('SELECT * FROM students WHERE class_id = ?').all(classId)
-        : db.prepare('SELECT * FROM students').all();
-      return (rows as any[]).map(rowToStudent);
+        ? dbAll('SELECT * FROM students WHERE class_id = ?', [classId])
+        : dbAll('SELECT * FROM students');
+      return rows.map(rowToStudent);
     },
     byId(id: number): Student | undefined {
-      const row = db.prepare('SELECT * FROM students WHERE id = ?').get(id);
+      const row = dbGet('SELECT * FROM students WHERE id = ?', [id]);
       return row ? rowToStudent(row) : undefined;
     },
     upsert(s: Student) {
-      db.prepare(
-        `INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET nis = excluded.nis, nama = excluded.nama, jk = excluded.jk, class_id = excluded.class_id, status = excluded.status`
-      ).run(s.id, s.nis, s.nama, s.jk, s.class_id, s.status, s.created_at);
+      const existing = dbGet('SELECT id FROM students WHERE id = ?', [s.id]);
+      if (existing) {
+        dbRun('UPDATE students SET nis = ?, nama = ?, jk = ?, class_id = ?, status = ? WHERE id = ?', [
+          s.nis,
+          s.nama,
+          s.jk,
+          s.class_id,
+          s.status,
+          s.id,
+        ]);
+      } else {
+        dbRun(
+          'INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [s.id, s.nis, s.nama, s.jk, s.class_id, s.status, s.created_at]
+        );
+      }
     },
   },
   pairings: {
     all(): TeacherPairing[] {
-      return (db.prepare('SELECT * FROM teacher_subject_class_pairing').all() as any[]).map(rowToPairing);
+      return dbAll('SELECT * FROM teacher_subject_class_pairing').map(rowToPairing);
     },
     isPaired(userId: number, subjectId: number, classId: number): boolean {
-      const row = db
-        .prepare(
-          'SELECT 1 FROM teacher_subject_class_pairing WHERE user_id = ? AND subject_id = ? AND class_id = ?'
-        )
-        .get(userId, subjectId, classId);
+      const row = dbGet(
+        'SELECT 1 as ok FROM teacher_subject_class_pairing WHERE user_id = ? AND subject_id = ? AND class_id = ?',
+        [userId, subjectId, classId]
+      );
       return !!row;
     },
     replaceAll(pairings: TeacherPairing[]): { applied: boolean; reason?: string } {
@@ -647,36 +924,31 @@ export const Repo = {
       // pasti berarti device pengirim belum ter-hidrasi penuh (localStorage-nya
       // sendiri masih kosong/basi), bukan permintaan sungguhan untuk menghapus
       // semua penugasan guru se-sekolah sekaligus.
-      const currentCount = (db.prepare('SELECT COUNT(*) as c FROM teacher_subject_class_pairing').get() as {
-        c: number;
-      }).c;
+      const currentCount =
+        dbGet<{ c: number }>('SELECT COUNT(*) as c FROM teacher_subject_class_pairing')?.c || 0;
       if (pairings.length === 0 && currentCount > 0) {
         return {
           applied: false,
           reason: `Ditolak: payload pairing kosong tapi server sudah punya ${currentCount} data. Kemungkinan device belum sinkron penuh — sync ditolak untuk mencegah penghapusan massal tidak sengaja.`,
         };
       }
-      db.exec('DELETE FROM teacher_subject_class_pairing');
-      const stmt = db.prepare(
-        'INSERT OR IGNORE INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)'
-      );
-      for (const p of pairings) stmt.run(p.user_id, p.subject_id, p.class_id);
+      dbRun('DELETE FROM teacher_subject_class_pairing');
+      const ignoreSql =
+        DB_DRIVER === 'mysql'
+          ? 'INSERT IGNORE INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)'
+          : 'INSERT OR IGNORE INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)';
+      for (const p of pairings) dbRun(ignoreSql, [p.user_id, p.subject_id, p.class_id]);
       return { applied: true };
     },
   },
   settings: {
     get(): SchoolSettings {
-      const row = db.prepare('SELECT * FROM school_settings WHERE id = 1').get();
+      const row = dbGet('SELECT * FROM school_settings WHERE id = 1');
       return row ? rowToSettings(row) : (INITIAL_SCHOOL_SETTINGS as SchoolSettings);
     },
     update(s: SchoolSettings) {
-      db.prepare(
-        `INSERT INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET school_name = excluded.school_name, logo_url = excluded.logo_url, tahun_ajaran = excluded.tahun_ajaran,
-           semester = excluded.semester, kepsek_nama = excluded.kepsek_nama, bk_nama = excluded.bk_nama,
-           backup_retention_weeks = excluded.backup_retention_weeks, last_backup_date = excluded.last_backup_date, last_backup_status = excluded.last_backup_status`
-      ).run(
+      const existing = dbGet('SELECT id FROM school_settings WHERE id = 1');
+      const params = [
         s.school_name,
         s.logo_url,
         s.tahun_ajaran,
@@ -685,8 +957,20 @@ export const Repo = {
         s.bk_nama,
         s.backup_retention_weeks,
         s.last_backup_date ?? null,
-        s.last_backup_status ?? null
-      );
+        s.last_backup_status ?? null,
+      ];
+      if (existing) {
+        dbRun(
+          `UPDATE school_settings SET school_name = ?, logo_url = ?, tahun_ajaran = ?, semester = ?, kepsek_nama = ?, bk_nama = ?, backup_retention_weeks = ?, last_backup_date = ?, last_backup_status = ? WHERE id = 1`,
+          params
+        );
+      } else {
+        dbRun(
+          `INSERT INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
+           VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params
+        );
+      }
     },
   },
   attendance: {
@@ -713,12 +997,10 @@ export const Repo = {
         sql += ' AND student_id = ?';
         params.push(filter.studentId);
       }
-      return (db.prepare(sql).all(...params) as any[]).map(rowToAttendance);
+      return dbAll(sql, params).map(rowToAttendance);
     },
     forStudent(studentId: number): AttendanceRecord[] {
-      return (db.prepare('SELECT * FROM attendance WHERE student_id = ?').all(studentId) as any[]).map(
-        rowToAttendance
-      );
+      return dbAll('SELECT * FROM attendance WHERE student_id = ?', [studentId]).map(rowToAttendance);
     },
     upsert(rec: {
       student_id: number;
@@ -730,110 +1012,148 @@ export const Repo = {
       recorded_by: number;
       recorded_via: string;
     }): { created: boolean } {
-      const existing = db
-        .prepare('SELECT id, notes FROM attendance WHERE student_id = ? AND subject_id IS ? AND tanggal = ?')
-        .get(rec.student_id, rec.subject_id, rec.tanggal) as { id: number; notes: string | null } | undefined;
+      // NB: dibedakan lewat "IS NULL" vs "= ?" (bukan "subject_id IS ?" dengan
+      // parameter) supaya query yang sama berlaku identik di SQLite & MySQL —
+      // MySQL tidak mendukung binding NULL lewat operator IS seperti SQLite.
+      const existing =
+        rec.subject_id === null
+          ? dbGet<{ id: number; notes: string | null }>(
+              'SELECT id, notes FROM attendance WHERE student_id = ? AND subject_id IS NULL AND tanggal = ?',
+              [rec.student_id, rec.tanggal]
+            )
+          : dbGet<{ id: number; notes: string | null }>(
+              'SELECT id, notes FROM attendance WHERE student_id = ? AND subject_id = ? AND tanggal = ?',
+              [rec.student_id, rec.subject_id, rec.tanggal]
+            );
 
       const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
       if (existing) {
-        db.prepare(
-          `UPDATE attendance SET status = ?, notes = ?, recorded_by = ?, recorded_via = ?, updated_at = ? WHERE id = ?`
-        ).run(rec.status, rec.notes ?? existing.notes, rec.recorded_by, rec.recorded_via, nowIso, existing.id);
+        dbRun(`UPDATE attendance SET status = ?, notes = ?, recorded_by = ?, recorded_via = ?, updated_at = ? WHERE id = ?`, [
+          rec.status,
+          rec.notes ?? existing.notes,
+          rec.recorded_by,
+          rec.recorded_via,
+          nowIso,
+          existing.id,
+        ]);
         return { created: false };
       }
 
       const [nextId] = allocateSequence('attendance', 1);
-      db.prepare(
+      dbRun(
         `INSERT INTO attendance (id, student_id, class_id, subject_id, tanggal, status, recorded_by, recorded_via, notes, created_at, updated_at, created_at_millis)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        nextId,
-        rec.student_id,
-        rec.class_id,
-        rec.subject_id,
-        rec.tanggal,
-        rec.status,
-        rec.recorded_by,
-        rec.recorded_via,
-        rec.notes ?? null,
-        nowIso,
-        nowIso,
-        new Date(rec.tanggal).getTime()
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          nextId,
+          rec.student_id,
+          rec.class_id,
+          rec.subject_id,
+          rec.tanggal,
+          rec.status,
+          rec.recorded_by,
+          rec.recorded_via,
+          rec.notes ?? null,
+          nowIso,
+          nowIso,
+          new Date(rec.tanggal).getTime(),
+        ]
       );
       return { created: true };
     },
     deleteSession(filter: { classId: number; subjectId: number | null; tanggal: string }): number {
-      let sql = 'DELETE FROM attendance WHERE class_id = ? AND tanggal = ? AND subject_id IS ?';
-      const info = db.prepare(sql).run(filter.classId, filter.tanggal, filter.subjectId);
-      return Number(info.changes || 0);
+      const info =
+        filter.subjectId === null
+          ? dbRun('DELETE FROM attendance WHERE class_id = ? AND tanggal = ? AND subject_id IS NULL', [
+              filter.classId,
+              filter.tanggal,
+            ])
+          : dbRun('DELETE FROM attendance WHERE class_id = ? AND tanggal = ? AND subject_id = ?', [
+              filter.classId,
+              filter.tanggal,
+              filter.subjectId,
+            ]);
+      return info.changes;
     },
   },
   gradeActivities: {
     insert(a: GradeActivity) {
-      db.prepare(
+      dbRun(
         `INSERT INTO grade_activities (id, teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(a.id, a.teacher_id, a.subject_id, a.class_id, a.nama_kegiatan, a.tanggal_kegiatan, a.tipe_skala, a.created_at);
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.teacher_id, a.subject_id, a.class_id, a.nama_kegiatan, a.tanggal_kegiatan, a.tipe_skala, a.created_at]
+      );
     },
     all(): GradeActivity[] {
-      return (db.prepare('SELECT * FROM grade_activities').all() as any[]).map(rowToActivity);
+      return dbAll('SELECT * FROM grade_activities').map(rowToActivity);
     },
   },
   gradeValues: {
     insertMany(activityId: string, values: { student_id: number; nilai: string }[]) {
-      const stmt = db.prepare('INSERT INTO grade_values (activity_id, student_id, nilai) VALUES (?, ?, ?)');
-      for (const v of values) stmt.run(activityId, v.student_id, v.nilai);
+      for (const v of values) {
+        dbRun('INSERT INTO grade_values (activity_id, student_id, nilai) VALUES (?, ?, ?)', [
+          activityId,
+          v.student_id,
+          v.nilai,
+        ]);
+      }
     },
     all(): GradeValue[] {
-      return (db.prepare('SELECT * FROM grade_values').all() as any[]).map(rowToGradeValue);
+      return dbAll('SELECT * FROM grade_values').map(rowToGradeValue);
     },
   },
   tokens: {
     all(): KetuaKelasToken[] {
-      return (db.prepare('SELECT * FROM ketua_kelas_tokens').all() as any[]).map(rowToToken);
+      return dbAll('SELECT * FROM ketua_kelas_tokens').map(rowToToken);
     },
     byToken(token: string): KetuaKelasToken | undefined {
-      const row = db.prepare('SELECT * FROM ketua_kelas_tokens WHERE token = ?').get(token);
+      const row = dbGet('SELECT * FROM ketua_kelas_tokens WHERE token = ?', [token]);
       return row ? rowToToken(row) : undefined;
     },
     upsert(t: KetuaKelasToken) {
-      const existing = db.prepare('SELECT token FROM ketua_kelas_tokens WHERE token = ?').get(t.token);
+      const existing = dbGet('SELECT token FROM ketua_kelas_tokens WHERE token = ?', [t.token]);
       if (existing) {
-        db.prepare(
-          `UPDATE ketua_kelas_tokens SET class_id = ?, status = ?, created_at = ?, created_by = ?, expires_at = ?, expires_at_millis = ? WHERE token = ?`
-        ).run(t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null, t.token);
+        dbRun(
+          `UPDATE ketua_kelas_tokens SET class_id = ?, status = ?, created_at = ?, created_by = ?, expires_at = ?, expires_at_millis = ? WHERE token = ?`,
+          [t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null, t.token]
+        );
       } else {
-        db.prepare(
+        dbRun(
           `INSERT INTO ketua_kelas_tokens (token, class_id, status, created_at, created_by, expires_at, expires_at_millis)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).run(t.token, t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null);
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [t.token, t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null]
+        );
       }
     },
   },
   parentTokens: {
     byToken(token: string): ParentAccessToken | undefined {
-      const row = db.prepare('SELECT * FROM parent_access_tokens WHERE token = ?').get(token);
+      const row = dbGet('SELECT * FROM parent_access_tokens WHERE token = ?', [token]);
       return row ? rowToParentToken(row) : undefined;
     },
     byStudent(studentId: number): ParentAccessToken[] {
-      return (
-        db.prepare('SELECT * FROM parent_access_tokens WHERE student_id = ? ORDER BY created_at DESC').all(studentId) as any[]
+      return dbAll(
+        'SELECT * FROM parent_access_tokens WHERE student_id = ? ORDER BY created_at DESC',
+        [studentId]
       ).map(rowToParentToken);
     },
     create(studentId: number, createdBy: number): ParentAccessToken {
       const token = `wm_${randomBytes(24).toString('base64url')}`;
       const nowIso = new Date().toISOString();
-      db.prepare(
-        `INSERT INTO parent_access_tokens (token, student_id, status, created_at, created_by) VALUES (?, ?, 'aktif', ?, ?)`
-      ).run(token, studentId, nowIso, createdBy);
+      dbRun(`INSERT INTO parent_access_tokens (token, student_id, status, created_at, created_by) VALUES (?, ?, 'aktif', ?, ?)`, [
+        token,
+        studentId,
+        nowIso,
+        createdBy,
+      ]);
       return { token, student_id: studentId, status: 'aktif', created_at: nowIso, created_by: createdBy };
     },
     revoke(token: string): boolean {
-      const info = db
-        .prepare(`UPDATE parent_access_tokens SET status = 'nonaktif', revoked_at = ? WHERE token = ? AND status = 'aktif'`)
-        .run(new Date().toISOString(), token);
-      return Number(info.changes || 0) > 0;
+      const info = dbRun(`UPDATE parent_access_tokens SET status = 'nonaktif', revoked_at = ? WHERE token = ? AND status = 'aktif'`, [
+        new Date().toISOString(),
+        token,
+      ]);
+      return info.changes > 0;
     },
   },
   sessions: {
@@ -843,32 +1163,33 @@ export const Repo = {
           ? `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '')
           : Array.from({ length: 48 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
       const expiresAtMillis = Date.now() + ttlMillis;
-      db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at_millis) VALUES (?, ?, ?, ?)').run(
+      dbRun('INSERT INTO sessions (token, user_id, created_at, expires_at_millis) VALUES (?, ?, ?, ?)', [
         token,
         userId,
         new Date().toISOString(),
-        expiresAtMillis
-      );
+        expiresAtMillis,
+      ]);
       // Sapu baris sesi kedaluwarsa milik pengguna lain sambil kita sudah menulis ke
       // tabel ini — token yang tidak pernah dipakai ulang tidak akan menumpuk selamanya
       // menunggu findValid() dipanggil dengan token itu (yang tidak pernah terjadi).
-      db.prepare('DELETE FROM sessions WHERE expires_at_millis < ?').run(Date.now());
+      dbRun('DELETE FROM sessions WHERE expires_at_millis < ?', [Date.now()]);
       return { token, expiresAtMillis };
     },
     findValid(token: string): { userId: number } | null {
       if (!token) return null;
-      const row = db.prepare('SELECT user_id, expires_at_millis FROM sessions WHERE token = ?').get(token) as
-        | { user_id: number; expires_at_millis: number }
-        | undefined;
+      const row = dbGet<{ user_id: number; expires_at_millis: number }>(
+        'SELECT user_id, expires_at_millis FROM sessions WHERE token = ?',
+        [token]
+      );
       if (!row) return null;
       if (Date.now() > row.expires_at_millis) {
-        db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+        dbRun('DELETE FROM sessions WHERE token = ?', [token]);
         return null;
       }
       return { userId: row.user_id };
     },
     destroy(token: string) {
-      db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+      dbRun('DELETE FROM sessions WHERE token = ?', [token]);
     },
     /**
      * Hapus semua sesi lain milik user ini (dipakai setelah ganti password
@@ -878,24 +1199,24 @@ export const Repo = {
      */
     destroyAllForUser(userId: number, exceptToken?: string): number {
       const info = exceptToken
-        ? db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, exceptToken)
-        : db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
-      return Number(info.changes || 0);
+        ? dbRun('DELETE FROM sessions WHERE user_id = ? AND token != ?', [userId, exceptToken])
+        : dbRun('DELETE FROM sessions WHERE user_id = ?', [userId]);
+      return info.changes;
     },
     pruneExpired(): number {
-      const info = db.prepare('DELETE FROM sessions WHERE expires_at_millis < ?').run(Date.now());
-      return Number(info.changes || 0);
+      const info = dbRun('DELETE FROM sessions WHERE expires_at_millis < ?', [Date.now()]);
+      return info.changes;
     },
   },
   auditLog: {
     recent(limit = 200): any[] {
-      return db.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT ?').all(limit);
+      return dbAll('SELECT * FROM audit_log ORDER BY id DESC LIMIT ?', [limit]);
     },
   },
 };
 
 export function getDbCounts() {
-  const count = (table: string) => (db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number }).c;
+  const count = (table: string) => dbGet<{ c: number }>(`SELECT COUNT(*) as c FROM ${table}`)?.c || 0;
   return {
     attendance: count('attendance'),
     students: count('students'),

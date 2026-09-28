@@ -3,7 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'node:crypto';
-import { Repo, allocateSequence, getSequencesStatus, recordAudit, getDbCounts } from './server/db';
+import { Repo, allocateSequence, getSequencesStatus, recordAudit, getDbCounts, DB_DRIVER } from './server/db';
 import { runBackup, scheduleAutomaticBackups } from './server/backup';
 import { GradeActivity } from './src/types';
 
@@ -11,11 +11,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================================================
-// Persistensi Data: SQLite (lihat server/db.ts) — Single Source of Truth Server
+// Persistensi Data: SQLite atau MySQL (lihat server/db.ts) — Single Source of
+// Truth Server, dipilih lewat DB_DRIVER (default: sqlite)
 // ============================================================================
-// Data sekarang disimpan di file SQLite (bukan lagi array in-memory), sehingga
-// tetap ada setelah server di-restart. Semua query/mutasi dilakukan lewat
-// modul `Repo` (server/db.ts).
+// Data disimpan di database SQL sungguhan (bukan lagi array in-memory),
+// sehingga tetap ada setelah server di-restart. Semua query/mutasi dilakukan
+// lewat modul `Repo` (server/db.ts) — kode di file ini sama sekali tidak
+// peduli driver mana yang aktif.
 
 // ============================================================================
 // Engine Validasi Aturan Bisnis Server-Side
@@ -1463,7 +1465,9 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with SQLite + Authoritative Business Rules`);
+    console.log(
+      `[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with ${DB_DRIVER === 'mysql' ? 'MySQL' : 'SQLite'} + Authoritative Business Rules`
+    );
   });
 
   // Housekeeping: sapu baris sesi kedaluwarsa yang tidak pernah dipakai lagi
