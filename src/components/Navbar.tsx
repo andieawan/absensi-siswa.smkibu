@@ -11,6 +11,7 @@ import {
   UserCog,
   RefreshCw,
   LogOut,
+  KeyRound,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -22,6 +23,7 @@ interface NavbarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   onResetDemo: () => void;
+  onOpenChangePassword: () => void;
   isDelegatedMode?: boolean;
   onExitDelegation?: () => void;
 }
@@ -34,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onTabChange,
   onResetDemo,
+  onOpenChangePassword,
   isDelegatedMode,
   onExitDelegation,
 }) => {
@@ -193,6 +196,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               <button
+                onClick={onOpenChangePassword}
+                title="Ganti Password Saya"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+              </button>
+
+              <button
                 onClick={onResetDemo}
                 title="Reset Data Demo ke Kondisi Awal"
                 className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
@@ -250,14 +261,24 @@ export const Navbar: React.FC<NavbarProps> = ({
       {!isDelegatedMode && (
         <div className="md:hidden flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 bg-white">
           <GoogleAuthButton />
-          <button
-            onClick={onResetDemo}
-            title="Reset Data Demo ke Kondisi Awal"
-            aria-label="Reset Data Demo"
-            className="min-h-11 min-w-11 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors shrink-0"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={onOpenChangePassword}
+              title="Ganti Password Saya"
+              aria-label="Ganti Password Saya"
+              className="min-h-11 min-w-11 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onResetDemo}
+              title="Reset Data Demo ke Kondisi Awal"
+              aria-label="Reset Data Demo"
+              className="min-h-11 min-w-11 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

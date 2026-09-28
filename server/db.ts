@@ -820,6 +820,18 @@ export const Repo = {
     destroy(token: string) {
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     },
+    /**
+     * Hapus semua sesi lain milik user ini (dipakai setelah ganti password
+     * mandiri, supaya perangkat/token lama yang mungkin sudah bocor langsung
+     * tidak berlaku lagi) — token sesi yang sedang dipakai untuk melakukan
+     * penggantian password itu sendiri dikecualikan lewat exceptToken.
+     */
+    destroyAllForUser(userId: number, exceptToken?: string): number {
+      const info = exceptToken
+        ? db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, exceptToken)
+        : db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+      return Number(info.changes || 0);
+    },
     pruneExpired(): number {
       const info = db.prepare('DELETE FROM sessions WHERE expires_at_millis < ?').run(Date.now());
       return Number(info.changes || 0);

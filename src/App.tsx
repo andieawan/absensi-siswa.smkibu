@@ -10,6 +10,7 @@ import { User, ClassItem, Subject } from './types';
 import { Navbar } from './components/Navbar';
 import { LoginGateView } from './components/LoginGateView';
 import { SwitchUserModal } from './components/SwitchUserModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { DashboardView } from './components/DashboardView';
 import { AttendanceView } from './components/AttendanceView';
 import { GradesView } from './components/GradesView';
@@ -48,6 +49,7 @@ export default function App() {
 
   // Switching user modal state
   const [pendingSwitchUserId, setPendingSwitchUserId] = useState<number | null>(null);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
 
   const runBidirectionalSync = async () => {
     setSyncStatus('syncing');
@@ -253,6 +255,7 @@ export default function App() {
           }
         }}
         onResetDemo={handleResetDemo}
+        onOpenChangePassword={() => setShowChangePasswordModal(true)}
         isDelegatedMode={false}
       />
 
@@ -395,6 +398,16 @@ export default function App() {
           onConfirmSwitch={(password) => handleSelectUser(pendingSwitchUserId!, password)}
         />
       )}
+
+      {/* Ganti Password Mandiri */}
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        currentUser={currentUser}
+        onClose={() => setShowChangePasswordModal(false)}
+        onSubmit={(oldPassword, newPassword) =>
+          authService.changeOwnPassword(currentUser, oldPassword, newPassword)
+        }
+      />
     </div>
   );
 }

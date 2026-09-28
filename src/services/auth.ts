@@ -1,6 +1,6 @@
 import { User } from '../types';
 import { storage } from './storage';
-import { getAuthToken, setAuthToken, clearAuthToken } from './authToken';
+import { getAuthToken, setAuthToken, clearAuthToken, apiFetch } from './authToken';
 
 const AUTH_STORAGE_KEY = 'go_absen_auth_session_v1';
 
@@ -155,6 +155,58 @@ export const authService = {
     }
 
     return { success: true, user };
+  },
+
+  /**
+   * Ganti password akun sendiri (self-service, tidak perlu Administrator).
+   * Server adalah sumber kebenaran: verifikasi password lama & penyimpanan
+   * hash baru dilakukan di sana (POST /api/auth/change-password). Kalau
+   * berhasil, hash lokal perangkat ini juga diperbarui supaya login offline
+   * berikutnya tetap memakai password yang baru, bukan yang lama.
+   */
+  async changeOwnPassword(
+    user: User,
+    oldPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string; message?: string }> {
+    const trimmedOld = oldPassword.trim();
+    const trimmedNew = newPassword.trim();
+
+    if (!trimmedOld) {
+      return { success: false, error: 'Password lama wajib diisi.' };
+    }
+    if (trimmedNew.length < 8) {
+      return { success: false, error: 'Password baru minimal 8 karakter.' };
+    }
+    if (trimmedOld === trimmedNew) {
+      return { success: false, error: 'Password baru harus berbeda dari password lama.' };
+    }
+    if (!getAuthToken()) {
+      return {
+        success: false,
+        error: 'Ganti password hanya bisa dilakukan saat online (server sekolah harus dapat dihubungi).',
+      };
+    }
+
+    let res: Response;
+    try {
+      res = await apiFetch('/api/auth/change-password', {
+        json: { old_password: trimmedOld, new_password: trimmedNew },
+      });
+    } catch {
+      return { success: false, error: 'Server tidak dapat dihubungi. Coba lagi saat koneksi tersedia.' };
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return { success: false, error: data?.error || `Gagal mengganti password (status ${res.status}).` };
+    }
+
+    // Server sudah setuju — perbarui hash lokal perangkat ini juga.
+    const newLocalHash = await hashPassword(trimmedNew);
+    storage.updateUserPassword(user.id, newLocalHash);
+    storage.addAuditLog('Ganti Password Mandiri', 'Akun Guru', user.nama, `Pengguna ${user.username} mengganti password sendiri`);
+
+    return { success: true, message: data.message || 'Password berhasil diganti.' };
   },
 
   /**

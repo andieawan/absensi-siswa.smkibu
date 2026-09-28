@@ -1181,6 +1181,53 @@ async function startServer() {
     return res.json({ success: true });
   });
 
+  // Ganti password mandiri (self-service) — SIAPA PUN yang sudah login boleh
+  // mengganti password sendiri tanpa lewat Administrator, asalkan tahu
+  // password lamanya. Identitas akun diambil dari token sesi (actor), bukan
+  // dari body, jadi tidak mungkin pakai endpoint ini untuk ganti password
+  // akun ORANG LAIN.
+  app.post('/api/auth/change-password', async (req: Request, res: Response) => {
+    const actor = getActor(res);
+    const { old_password, new_password } = req.body || {};
+
+    if (typeof old_password !== 'string' || !old_password) {
+      return res.status(400).json({ success: false, error: 'Password lama wajib diisi.' });
+    }
+    if (typeof new_password !== 'string' || new_password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password baru minimal 8 karakter.' });
+    }
+    if (old_password === new_password) {
+      return res.status(400).json({ success: false, error: 'Password baru harus berbeda dari password lama.' });
+    }
+
+    const user = Repo.users.byId(actor.id);
+    if (!user || !user.is_active) {
+      return res.status(404).json({ success: false, error: 'Akun tidak ditemukan atau nonaktif.' });
+    }
+
+    const oldValid = await verifyPasswordAgainstHash(old_password, user.password_hash);
+    if (!oldValid) {
+      return res.status(401).json({ success: false, error: 'Password lama tidak sesuai.' });
+    }
+
+    const salt = randomBytes(16).toString('hex');
+    const newHash = `sha256:${salt}:${await sha256Hex(`${salt}:${new_password}`)}`;
+    Repo.users.upsert({ ...user, password_hash: newHash });
+
+    // Sesi lain (perangkat/tab lain, atau token yang mungkin sudah bocor)
+    // langsung dicabut — hanya sesi yang dipakai untuk request ini yang tetap
+    // berlaku, supaya guru yang barusan ganti password tidak ikut ter-logout.
+    const currentToken = getBearerToken(req);
+    Repo.sessions.destroyAllForUser(actor.id, currentToken || undefined);
+
+    recordAudit('Ganti Password Mandiri', 'Akun Guru', actor.nama, 'Pengguna mengganti password akunnya sendiri');
+
+    return res.json({
+      success: true,
+      message: 'Password berhasil diganti. Sesi login di perangkat lain (jika ada) sudah otomatis keluar demi keamanan.',
+    });
+  });
+
   // Database Schema & Model Definition endpoint (Documentation / Verification)
   app.get('/api/schema', (req: Request, res: Response) => {
     res.json({
