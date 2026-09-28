@@ -2,100 +2,18 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import {
-  INITIAL_CLASSES,
-  INITIAL_STUDENTS,
-  INITIAL_DELEGATION_TOKENS,
-  INITIAL_ATTENDANCE,
-  INITIAL_USERS,
-  INITIAL_PAIRINGS,
-  INITIAL_SUBJECTS,
-  INITIAL_GRADE_ACTIVITIES,
-  INITIAL_GRADE_VALUES,
-} from './src/data/mockData';
-import {
-  AttendanceRecord,
-  Student,
-  ClassItem,
-  Subject,
-  User,
-  TeacherPairing,
-  GradeActivity,
-  GradeValue,
-  KetuaKelasToken,
-} from './src/types';
+import { Repo, allocateSequence, getSequencesStatus, recordAudit, getDbCounts } from './server/db';
+import { GradeActivity } from './src/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================================================
-// Authoritative In-Memory Database di Sisi Server (Node.js/Express)
+// Persistensi Data: SQLite (lihat server/db.ts) — Single Source of Truth Server
 // ============================================================================
-let serverAttendance: AttendanceRecord[] = [...INITIAL_ATTENDANCE];
-let serverStudents: Student[] = [...INITIAL_STUDENTS];
-let serverClasses: ClassItem[] = [...INITIAL_CLASSES];
-let serverSubjects: Subject[] = [...INITIAL_SUBJECTS];
-let serverUsers: User[] = [...INITIAL_USERS];
-let serverPairings: TeacherPairing[] = [...INITIAL_PAIRINGS];
-let serverGradeActivities: GradeActivity[] = [...INITIAL_GRADE_ACTIVITIES];
-let serverGradeValues: GradeValue[] = [...INITIAL_GRADE_VALUES];
-let serverTokens: KetuaKelasToken[] = [
-  ...INITIAL_DELEGATION_TOKENS.map((t) => ({
-    ...t,
-    expires_at: t.expires_at || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-    expires_at_millis: t.expires_at_millis || (Date.now() + 7 * 24 * 3600 * 1000),
-  })),
-];
-
-// ============================================================================
-// Single Source of Truth: Authoritative Sequence Coordinator (Atomic ID Generator)
-// ============================================================================
-const serverSequences: Record<string, number> = {
-  users: Math.max(10, ...INITIAL_USERS.map((u) => u.id)),
-  students: Math.max(100, ...INITIAL_STUDENTS.map((s) => s.id)),
-  attendance: Math.max(1000, ...INITIAL_ATTENDANCE.map((a) => a.id)),
-  classes: Math.max(10, ...INITIAL_CLASSES.map((c) => c.id)),
-  subjects: Math.max(10, ...INITIAL_SUBJECTS.map((s) => s.id)),
-  audit_logs: 100,
-};
-
-function allocateServerSequence(entity: string, count = 1): number[] {
-  if (!serverSequences[entity]) {
-    serverSequences[entity] = 1000;
-  }
-  const startId = serverSequences[entity] + 1;
-  serverSequences[entity] += count;
-  const allocated: number[] = [];
-  for (let i = startId; i <= serverSequences[entity]; i++) {
-    allocated.push(i);
-  }
-  return allocated;
-}
-
-// Audit trail server
-interface ServerAuditLog {
-  id: number;
-  timestamp: string;
-  action: string;
-  module: string;
-  actor: string;
-  details: string;
-}
-const serverAuditLogs: ServerAuditLog[] = [];
-
-function recordServerAudit(action: string, module: string, actor: string, details: string) {
-  serverAuditLogs.unshift({
-    id: serverAuditLogs.length + 1,
-    timestamp: new Date().toISOString(),
-    action,
-    module,
-    actor,
-    details,
-  });
-  if (serverAuditLogs.length > 500) {
-    serverAuditLogs.pop();
-  }
-}
+// Data sekarang disimpan di file SQLite (bukan lagi array in-memory), sehingga
+// tetap ada setelah server di-restart. Semua query/mutasi dilakukan lewat
+// modul `Repo` (server/db.ts).
 
 // ============================================================================
 // Engine Validasi Aturan Bisnis Server-Side
@@ -106,7 +24,7 @@ function recordServerAudit(action: string, module: string, actor: string, detail
  * Menghitung persentase kehadiran dan jumlah sesi defisit untuk mencapai ambang 85%.
  */
 function calculateStudentAttendanceStats(studentId: number) {
-  const records = serverAttendance.filter((a) => a.student_id === studentId);
+  const records = Repo.attendance.forStudent(studentId);
   const total = records.length;
   const hadir = records.filter((a) => a.status === 'H').length;
   const izin = records.filter((a) => a.status === 'I').length;
@@ -151,7 +69,7 @@ function verifyTeacherAuthorization(
     return { allowed: true };
   }
 
-  const user = serverUsers.find((u) => u.id === userId);
+  const user = Repo.users.byId(userId);
   if (!user || !user.is_active) {
     return { allowed: false, error: 'Pengguna tidak ditemukan atau akun dalam status nonaktif.' };
   }
@@ -168,9 +86,7 @@ function verifyTeacherAuthorization(
   }
 
   // Absen Mapel: Wajib terdaftar dalam pasangan teacher_subject_class_pairing
-  const isPaired = serverPairings.some(
-    (p) => p.user_id === userId && p.subject_id === subjectId && p.class_id === classId
-  );
+  const isPaired = Repo.pairings.isPaired(userId, subjectId, classId);
   if (!isPaired) {
     const hasClass = user.classes?.includes(classId);
     const hasSubject = user.subjects?.includes(subjectId);
@@ -183,6 +99,25 @@ function verifyTeacherAuthorization(
   }
 
   return { allowed: true };
+}
+
+// ============================================================================
+// Verifikasi Password Server-Side (sha256:<salt>:<hash>, sinkron dengan
+// src/services/auth.ts sisi klien). TIDAK ADA backdoor / master password.
+// ============================================================================
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPasswordAgainstHash(plain: string, stored: string | undefined | null): Promise<boolean> {
+  if (!stored) return false;
+  const parts = stored.split(':');
+  if (parts.length !== 3 || parts[0] !== 'sha256') return false;
+  const [, salt] = parts;
+  const recomputed = `sha256:${salt}:${await sha256Hex(`${salt}:${plain}`)}`;
+  return recomputed === stored;
 }
 
 async function startServer() {
@@ -199,15 +134,10 @@ async function startServer() {
     res.json({
       status: 'ok',
       service: 'go_absen_siswa_api',
-      engine: 'Node.js Express + MySQL Relational Architecture + Server Business Rules',
+      engine: 'Node.js Express + SQLite Relational Architecture + Server Business Rules',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      records: {
-        attendance: serverAttendance.length,
-        students: serverStudents.length,
-        classes: serverClasses.length,
-        pairings: serverPairings.length,
-      },
+      records: getDbCounts(),
     });
   });
 
@@ -218,7 +148,7 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'Parameter entity wajib diisi.' });
     }
     const safeCount = Math.min(Math.max(1, Number(count) || 1), 1000);
-    const allocatedIds = allocateServerSequence(String(entity), safeCount);
+    const allocatedIds = allocateSequence(String(entity), safeCount);
     return res.json({
       success: true,
       entity,
@@ -231,7 +161,7 @@ async function startServer() {
   app.get('/api/sequence/status', (req: Request, res: Response) => {
     return res.json({
       success: true,
-      sequences: serverSequences,
+      sequences: getSequencesStatus(),
       timestamp: new Date().toISOString(),
     });
   });
@@ -329,19 +259,15 @@ async function startServer() {
       }
     }
 
-    const initialCount = serverAttendance.length;
-    serverAttendance = serverAttendance.filter((r) => {
-      const matchClass = r.class_id === Number(class_id);
-      const matchSubject = subject_id === null || subject_id === undefined
-        ? r.subject_id === null
-        : r.subject_id === Number(subject_id);
-      const matchTanggal = r.tanggal === tanggal;
-      return !(matchClass && matchSubject && matchTanggal);
+    const normalizedSubjectId =
+      subject_id === null || subject_id === undefined ? null : Number(subject_id);
+    const deletedCount = Repo.attendance.deleteSession({
+      classId: Number(class_id),
+      subjectId: normalizedSubjectId,
+      tanggal,
     });
 
-    const deletedCount = initialCount - serverAttendance.length;
-
-    recordServerAudit(
+    recordAudit(
       'Hapus Sesi Absensi',
       'Absensi',
       String(user_id || 'System'),
@@ -413,7 +339,7 @@ async function startServer() {
     }
 
     // Cek batas toleransi backdate 7 hari untuk pengguna biasa (non-admin)
-    const user = serverUsers.find((u) => u.id === Number(recorded_by));
+    const user = Repo.users.byId(Number(recorded_by));
     const roles = user?.roles || [];
     const isAdmin = roles.includes('admin') || roles.includes('superadmin');
     const pastDiffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
@@ -449,7 +375,7 @@ async function startServer() {
       }
 
       // Validasi siswa memang terdaftar pada kelas tersebut
-      const foundStudent = serverStudents.find((s) => s.id === Number(item.student_id));
+      const foundStudent = Repo.students.byId(Number(item.student_id));
       if (!foundStudent) {
         return res.status(404).json({
           success: false,
@@ -464,48 +390,24 @@ async function startServer() {
       }
     }
 
-    // 4. Lakukan Idempotent UPSERT di Memori Server
-    const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    // 4. Lakukan Idempotent UPSERT di SQLite
+    const normalizedSubjectId = subject_id !== null && subject_id !== undefined ? Number(subject_id) : null;
     let created = 0;
     let updated = 0;
 
     for (const item of entries) {
-      const normalizedSubjectId = subject_id !== null && subject_id !== undefined ? Number(subject_id) : null;
-      const existingIdx = serverAttendance.findIndex(
-        (r) =>
-          r.student_id === Number(item.student_id) &&
-          r.subject_id === normalizedSubjectId &&
-          r.tanggal === tanggal
-      );
-
-      if (existingIdx >= 0) {
-        serverAttendance[existingIdx] = {
-          ...serverAttendance[existingIdx],
-          status: item.status,
-          notes: item.notes ?? serverAttendance[existingIdx].notes,
-          recorded_by: Number(recorded_by),
-          recorded_via: recorded_via || 'guru',
-          updated_at: nowIso,
-        };
-        updated++;
-      } else {
-        const nextId = allocateServerSequence('attendance', 1)[0];
-        serverAttendance.push({
-          id: nextId,
-          student_id: Number(item.student_id),
-          class_id: Number(class_id),
-          subject_id: normalizedSubjectId,
-          tanggal,
-          status: item.status,
-          notes: item.notes,
-          recorded_by: Number(recorded_by),
-          recorded_via: recorded_via || 'guru',
-          created_at: nowIso,
-          updated_at: nowIso,
-          created_at_millis: new Date(tanggal).getTime(),
-        });
-        created++;
-      }
+      const result = Repo.attendance.upsert({
+        student_id: Number(item.student_id),
+        class_id: Number(class_id),
+        subject_id: normalizedSubjectId,
+        tanggal,
+        status: item.status,
+        notes: item.notes,
+        recorded_by: Number(recorded_by),
+        recorded_via: recorded_via || 'guru',
+      });
+      if (result.created) created++;
+      else updated++;
     }
 
     // 5. ATURAN 85%: Evaluasi otomatis dan berikan alert jika ada siswa yang kehadirannya turun di bawah 85%
@@ -513,7 +415,7 @@ async function startServer() {
     for (const item of entries) {
       const stats = calculateStudentAttendanceStats(Number(item.student_id));
       if (!stats.meets85Percent) {
-        const st = serverStudents.find((s) => s.id === Number(item.student_id));
+        const st = Repo.students.byId(Number(item.student_id));
         attendanceAlerts.push({
           student_id: item.student_id,
           nama: st?.nama,
@@ -525,7 +427,7 @@ async function startServer() {
       }
     }
 
-    recordServerAudit(
+    recordAudit(
       'Submit Absensi',
       'Absensi',
       user?.nama || String(recorded_by),
@@ -549,13 +451,13 @@ async function startServer() {
   // Evaluasi kelayakan kehadiran siswa tunggal
   app.get('/api/students/:id/attendance-eligibility', (req: Request, res: Response) => {
     const studentId = Number(req.params.id);
-    const student = serverStudents.find((s) => s.id === studentId);
+    const student = Repo.students.byId(studentId);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Siswa tidak ditemukan.' });
     }
 
     const stats = calculateStudentAttendanceStats(studentId);
-    const studentClass = serverClasses.find((c) => c.id === student.class_id);
+    const studentClass = Repo.classes.byId(student.class_id);
 
     return res.json({
       success: true,
@@ -592,9 +494,9 @@ async function startServer() {
   // Evaluasi kelayakan kehadiran batch untuk satu kelas
   app.post('/api/students/evaluate-eligibility', (req: Request, res: Response) => {
     const { class_id } = req.body;
-    let studentsToEval = serverStudents;
+    let studentsToEval = Repo.students.all();
     if (class_id) {
-      studentsToEval = serverStudents.filter((s) => s.class_id === Number(class_id));
+      studentsToEval = studentsToEval.filter((s) => s.class_id === Number(class_id));
     }
 
     const evaluations = studentsToEval.map((s) => {
@@ -630,7 +532,7 @@ async function startServer() {
   app.post('/api/students/academic-clearance', (req: Request, res: Response) => {
     const { student_id, admin_override, override_reason, operator_id } = req.body;
 
-    const student = serverStudents.find((s) => s.id === Number(student_id));
+    const student = Repo.students.byId(Number(student_id));
     if (!student) {
       return res.status(404).json({ success: false, error: 'Siswa tidak ditemukan.' });
     }
@@ -659,7 +561,7 @@ async function startServer() {
     // Jika memenuhi syarat atau ada override resmi
     const clearanceCode = `CLR-${new Date().getFullYear()}-${student.nis}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    recordServerAudit(
+    recordAudit(
       'Pengesahan Akademik',
       'Akademik',
       String(operator_id || 'System'),
@@ -692,7 +594,7 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'Data penilaian tidak lengkap.' });
     }
 
-    const teacher = serverUsers.find((u) => u.id === Number(teacher_id));
+    const teacher = Repo.users.byId(Number(teacher_id));
     const roles = teacher?.roles || [];
     const authCheck = verifyTeacherAuthorization(Number(teacher_id), Number(subject_id), Number(class_id), roles);
     if (!authCheck.allowed) {
@@ -729,7 +631,7 @@ async function startServer() {
       validatedScores.push({ student_id: Number(sc.student_id), nilai: valStr });
     }
 
-    // Simpan activity dan values di memori server (UUID global)
+    // Simpan activity dan values di SQLite (UUID global)
     const activityId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? `act-${crypto.randomUUID()}`
       : `act-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -745,15 +647,8 @@ async function startServer() {
       tipe_skala,
       created_at: nowIso,
     };
-    serverGradeActivities.push(newActivity);
-
-    for (const sc of validatedScores) {
-      serverGradeValues.push({
-        activity_id: activityId,
-        student_id: sc.student_id,
-        nilai: sc.nilai,
-      });
-    }
+    Repo.gradeActivities.insert(newActivity);
+    Repo.gradeValues.insertMany(activityId, validatedScores);
 
     return res.json({
       success: true,
@@ -771,12 +666,7 @@ async function startServer() {
     if (!tokenObj || !tokenObj.token) {
       return res.status(400).json({ success: false, error: 'Data token tidak valid.' });
     }
-    const idx = serverTokens.findIndex((t) => t.token === tokenObj.token);
-    if (idx >= 0) {
-      serverTokens[idx] = tokenObj;
-    } else {
-      serverTokens.push(tokenObj);
-    }
+    Repo.tokens.upsert(tokenObj);
     return res.json({ success: true, message: 'Token berhasil didaftarkan di server.' });
   });
 
@@ -785,7 +675,7 @@ async function startServer() {
     if (!tokenStr) {
       return res.status(400).json({ valid: false, error: 'Parameter token wajib diisi.' });
     }
-    const found = serverTokens.find((t) => t.token === tokenStr);
+    const found = Repo.tokens.byToken(tokenStr);
     if (!found) {
       return res.status(404).json({ valid: false, error: 'Token delegasi tidak ditemukan di database sekolah.' });
     }
@@ -808,7 +698,7 @@ async function startServer() {
     if (!tokenStr) {
       return res.status(400).json({ valid: false, error: 'Parameter token diperlukan.' });
     }
-    const found = serverTokens.find((t) => t.token === tokenStr);
+    const found = Repo.tokens.byToken(tokenStr);
     if (!found) {
       return res.status(404).json({ valid: false, error: 'Token delegasi tidak ditemukan di sistem sekolah.' });
     }
@@ -824,8 +714,8 @@ async function startServer() {
       });
     }
 
-    const targetClass = serverClasses.find((c) => c.id === found.class_id);
-    const students = serverStudents.filter((s) => s.class_id === found.class_id && s.status === 'aktif');
+    const targetClass = Repo.classes.byId(found.class_id);
+    const students = Repo.students.all(found.class_id).filter((s) => s.status === 'aktif');
 
     return res.json({
       valid: true,
@@ -837,7 +727,7 @@ async function startServer() {
 
   app.post('/api/delegation/submit', (req: Request, res: Response) => {
     const { token, class_id, tanggal, entries } = req.body;
-    const found = serverTokens.find((t) => t.token === token);
+    const found = Repo.tokens.byToken(token);
     if (!found) {
       return res.status(404).json({ success: false, error: 'Token delegasi tidak sah.' });
     }
@@ -853,38 +743,21 @@ async function startServer() {
       return res.status(403).json({ success: false, error: 'Token ini tidak berlaku untuk kelas yang diajukan.' });
     }
 
-    // Submit ke server attendance
-    const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    // Submit ke attendance SQLite
+    if (!entries || !Array.isArray(entries)) {
+      return res.status(400).json({ success: false, error: 'Parameter entries[] wajib diisi.' });
+    }
     for (const item of entries) {
-      const existingIdx = serverAttendance.findIndex(
-        (r) => r.student_id === Number(item.student_id) && r.subject_id === null && r.tanggal === tanggal
-      );
-      if (existingIdx >= 0) {
-        serverAttendance[existingIdx] = {
-          ...serverAttendance[existingIdx],
-          status: item.status,
-          notes: item.notes ?? serverAttendance[existingIdx].notes,
-          recorded_by: found.created_by,
-          recorded_via: 'ketua_kelas_delegasi',
-          updated_at: nowIso,
-        };
-      } else {
-        const nextId = allocateServerSequence('attendance', 1)[0];
-        serverAttendance.push({
-          id: nextId,
-          student_id: Number(item.student_id),
-          class_id: Number(class_id),
-          subject_id: null,
-          tanggal,
-          status: item.status,
-          notes: item.notes,
-          recorded_by: found.created_by,
-          recorded_via: 'ketua_kelas_delegasi',
-          created_at: nowIso,
-          updated_at: nowIso,
-          created_at_millis: new Date(tanggal).getTime(),
-        });
-      }
+      Repo.attendance.upsert({
+        student_id: Number(item.student_id),
+        class_id: Number(class_id),
+        subject_id: null,
+        tanggal,
+        status: item.status,
+        notes: item.notes,
+        recorded_by: found.created_by,
+        recorded_via: 'ketua_kelas_delegasi',
+      });
     }
 
     return res.json({
@@ -898,62 +771,74 @@ async function startServer() {
   // ============================================================================
   app.get('/api/attendance', (req: Request, res: Response) => {
     const { class_id, subject_id, tanggal, student_id } = req.query;
-    let result = serverAttendance;
 
-    if (class_id) {
-      result = result.filter((r) => r.class_id === Number(class_id));
-    }
-    if (subject_id !== undefined) {
-      result = result.filter((r) => (subject_id === 'null' ? r.subject_id === null : r.subject_id === Number(subject_id)));
-    }
-    if (tanggal) {
-      result = result.filter((r) => r.tanggal === String(tanggal));
-    }
-    if (student_id) {
-      result = result.filter((r) => r.student_id === Number(student_id));
-    }
+    const result = Repo.attendance.query({
+      classId: class_id ? Number(class_id) : undefined,
+      subjectId:
+        subject_id === undefined
+          ? undefined
+          : subject_id === 'null'
+          ? null
+          : Number(subject_id),
+      tanggal: tanggal ? String(tanggal) : undefined,
+      studentId: student_id ? Number(student_id) : undefined,
+    });
 
     return res.json({ success: true, count: result.length, data: result });
   });
 
   app.get('/api/students', (req: Request, res: Response) => {
     const { class_id } = req.query;
-    let result = serverStudents;
-    if (class_id) {
-      result = result.filter((s) => s.class_id === Number(class_id));
-    }
+    const result = Repo.students.all(class_id ? Number(class_id) : undefined);
     return res.json({ success: true, count: result.length, data: result });
   });
 
   app.get('/api/classes', (req: Request, res: Response) => {
-    return res.json({ success: true, data: serverClasses });
+    return res.json({ success: true, data: Repo.classes.all() });
+  });
+
+  app.get('/api/subjects', (req: Request, res: Response) => {
+    return res.json({ success: true, data: Repo.subjects.all() });
+  });
+
+  app.get('/api/grades', (req: Request, res: Response) => {
+    const { class_id, subject_id } = req.query;
+    let activities = Repo.gradeActivities.all();
+    if (class_id) activities = activities.filter((a) => a.class_id === Number(class_id));
+    if (subject_id) activities = activities.filter((a) => a.subject_id === Number(subject_id));
+    const activityIds = new Set(activities.map((a) => a.id));
+    const values = Repo.gradeValues.all().filter((v) => activityIds.has(v.activity_id));
+    return res.json({ success: true, activities, values });
   });
 
   // REST API Endpoint for server-side credential verification
-  app.post('/api/auth/verify', (req: Request, res: Response) => {
+  // PENTING: TIDAK ADA master password / backdoor. Verifikasi murni terhadap
+  // password_hash (sha256:<salt>:<hash>) milik akun yang bersangkutan.
+  app.post('/api/auth/verify', async (req: Request, res: Response) => {
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
     }
-    const isMaster = password === '123456' || password === 'guru123' || password === 'admin123';
+    const user = Repo.users.all().find((u) => u.username === username);
+    if (!user || !user.is_active) {
+      return res.status(401).json({ success: false, message: 'Akun tidak ditemukan atau nonaktif.' });
+    }
+    const isValid = await verifyPasswordAgainstHash(String(password), user.password_hash);
     return res.json({
-      success: isMaster,
-      message: isMaster ? 'Kredensial valid' : 'Password atau PIN tidak cocok',
+      success: isValid,
+      message: isValid ? 'Kredensial valid' : 'Password atau PIN tidak cocok',
     });
   });
 
   // Database Schema & Model Definition endpoint (Documentation / Verification)
   app.get('/api/schema', (req: Request, res: Response) => {
     res.json({
-      message: 'Skema Relasional MySQL Terverifikasi dengan Server Business Rules',
+      message: 'Skema Relasional SQLite Terverifikasi dengan Server Business Rules',
+      engine: 'node:sqlite (built-in, file-backed, WAL mode)',
       tables: [
         'users',
-        'roles',
-        'user_roles',
-        'subjects',
         'classes',
-        'user_subjects',
-        'user_classes',
+        'subjects',
         'students',
         'attendance',
         'grade_activities',
@@ -961,7 +846,7 @@ async function startServer() {
         'teacher_subject_class_pairing',
         'ketua_kelas_tokens',
         'audit_log',
-        'school_settings',
+        'sequences',
       ],
       constraints: {
         attendance_unique: '(student_id, subject_id, tanggal)',
@@ -992,7 +877,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with Authoritative Business Rules`);
+    console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with SQLite + Authoritative Business Rules`);
   });
 }
 

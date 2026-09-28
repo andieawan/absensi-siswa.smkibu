@@ -35,7 +35,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 1,
     username: 'pak.budi',
-    password_hash: 'sha256:277220ab059ce99329a328260655b391:78b3dbaccce3f4b5abb48fed65a3996e4baabe541c3f276bec4bfdd100b24c1d',
+    password_hash: 'sha256:ec1780f6c26cfe170593e74bfebfefe2:e78fe0ea497ba83fdf3d8a76a5675b5bd0a0eb0a59e73fcbe29e87f9fd88139d',
     nama: 'Budi Santoso, S.Pd., M.Kom.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -48,7 +48,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 2,
     username: 'ibu.siti',
-    password_hash: 'sha256:d93d421bedd86ddbc2990b79d713f757:cac9976e0518e6d070c8300599b85eb96789efa87300303bc722228889e82dd3',
+    password_hash: 'sha256:b0f9c670436018640cc31abe5b7f14ef:fe0a3a554bd19533c3cdc494f1519bc6f8b2a743ec72e8c5a3fc17c711df6962',
     nama: 'Siti Aminah, S.Pd.',
     kelas_wali_id: 1, // Wali Kelas XI DKV 1
     foto_profil_url: null,
@@ -61,7 +61,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 3,
     username: 'pak.hendra',
-    password_hash: 'sha256:c7b15b7772a3e7697b4a2027b687afe2:3b22d9389b5ebe25824661557915b31a7c364f26069127c6d86e96a4f4fe4ffc',
+    password_hash: 'sha256:2200973f6946bd4af711cefef23fb749:339efeda26a1e2f81d7ca10a0e5131b8b48bd367751e6bdb39fd78a87a59afb2',
     nama: 'Hendra Pratama, S.Si.',
     kelas_wali_id: 2, // Wali Kelas X RPL 1
     foto_profil_url: null,
@@ -74,7 +74,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 4,
     username: 'bu.ratna',
-    password_hash: 'sha256:c2a1f379070c84693e60359cf63a14ea:348f8e873a8d6b1da662a0ed60f7f17f974ddb1477e1460709d8c639c91455f1',
+    password_hash: 'sha256:0596dbf457febd1c5e120e1e0805016b:9edaa9d7571560d45d2c25f8e886269306693f8275727e3e2b70dc309d09b172',
     nama: 'Dra. Ratna Kusuma, M.Pd.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -87,7 +87,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 5,
     username: 'bu.maya',
-    password_hash: 'sha256:65e8416f9557660b35c0accf0d513723:7040fd3563c716c160976e8fc48f4af9e57e046bf647b07aecf70c28e792e66b',
+    password_hash: 'sha256:fed0b488941c87ce20625699e7938690:8da921357dd9da2881ff3f2a34df13aded035b3575fd6782e2ba4908f46798d1',
     nama: 'Maya Rosita, S.Psi.',
     kelas_wali_id: null,
     foto_profil_url: null,
