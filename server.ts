@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'node:crypto';
 import { Repo, allocateSequence, getSequencesStatus, recordAudit, getDbCounts } from './server/db';
+import { runBackup, scheduleAutomaticBackups } from './server/backup';
 import { GradeActivity } from './src/types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1033,8 +1034,31 @@ async function startServer() {
     if (!settings || typeof settings !== 'object') {
       return res.status(400).json({ success: false, error: 'Data pengaturan sekolah tidak valid.' });
     }
-    Repo.settings.update(settings);
+    // last_backup_date & last_backup_status HANYA boleh diisi oleh proses backup
+    // server sendiri (lihat server/backup.ts) — kalau form pengaturan sekolah di
+    // client ikut mengirim nilai lama/basi untuk dua field ini, jangan sampai
+    // menimpa balik status backup terbaru yang sudah dicatat server.
+    const current = Repo.settings.get();
+    Repo.settings.update({
+      ...settings,
+      last_backup_date: current.last_backup_date,
+      last_backup_status: current.last_backup_status,
+    });
     return res.json({ success: true, message: 'Pengaturan sekolah berhasil disimpan di server.' });
+  });
+
+  // Backup manual sekali-tekan (khusus Administrator) — mengikuti mekanisme
+  // yang sama dengan backup otomatis terjadwal (server/backup.ts).
+  app.post('/api/admin/backup-now', (req: Request, res: Response) => {
+    if (!hasAdminRole(getActor(res).roles)) {
+      return res.status(403).json({ success: false, error: 'Otorisasi Ditolak: backup manual khusus Administrator.' });
+    }
+    const result = runBackup();
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error || 'Gagal membuat backup database.' });
+    }
+    recordAudit('Backup Manual Database', 'Sistem', getActor(res).nama, `Snapshot: ${result.file}`);
+    return res.json({ success: true, file: result.file, settings: Repo.settings.get() });
   });
 
   // ============================================================================
@@ -1213,6 +1237,11 @@ async function startServer() {
   setInterval(() => {
     Repo.sessions.pruneExpired();
   }, 60 * 60 * 1000).unref();
+
+  // Backup otomatis harian ke server/backup.ts (VACUUM INTO snapshot + retensi
+  // sesuai school_settings.backup_retention_weeks). Bisa juga dipicu manual
+  // lewat POST /api/admin/backup-now.
+  scheduleAutomaticBackups(24);
 }
 
 startServer().catch((err) => {
