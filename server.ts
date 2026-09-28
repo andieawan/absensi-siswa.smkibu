@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'node:crypto';
 import { Repo, allocateSequence, getSequencesStatus, recordAudit, getDbCounts } from './server/db';
 import { GradeActivity } from './src/types';
 
@@ -101,6 +102,33 @@ function verifyTeacherAuthorization(
   return { allowed: true };
 }
 
+/**
+ * Aturan Bisnis 4: Integritas entri absensi — status H/I/S/A dan siswa terdaftar
+ * di kelas yang bersangkutan. Mengembalikan null kalau semua entri valid.
+ */
+function validateAttendanceEntries(entries: any[], classId: number): { status: number; error: string } | null {
+  const validStatuses = ['H', 'I', 'S', 'A'];
+  for (const item of entries) {
+    if (!item || !item.student_id || !validStatuses.includes(item.status)) {
+      return {
+        status: 400,
+        error: `Entri absensi tidak valid: ID siswa #${item?.student_id} dengan status '${item?.status}'. Status harus salah satu dari: H, I, S, A.`,
+      };
+    }
+    const foundStudent = Repo.students.byId(Number(item.student_id));
+    if (!foundStudent) {
+      return { status: 404, error: `Siswa ID #${item.student_id} tidak terdaftar di database sekolah.` };
+    }
+    if (foundStudent.class_id !== classId) {
+      return {
+        status: 400,
+        error: `Integritas Data Gagal: Siswa ${foundStudent.nama} bukan anggota kelas ID #${classId}.`,
+      };
+    }
+  }
+  return null;
+}
+
 // ============================================================================
 // Verifikasi Password Server-Side (sha256:<salt>:<hash>, sinkron dengan
 // src/services/auth.ts sisi klien). TIDAK ADA backdoor / master password.
@@ -158,12 +186,108 @@ function requireAdmin(req: Request, res: Response): { id: number; nama: string; 
   return user;
 }
 
+type Actor = { id: number; nama: string; roles: string[] };
+
+/** Pengguna yang sudah diverifikasi middleware auth global (lihat startServer). */
+function getActor(res: Response): Actor {
+  return res.locals.actor as Actor;
+}
+
+function hasAdminRole(roles: string[]): boolean {
+  return roles.includes('admin') || roles.includes('superadmin');
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Tanggal sesi wajib berformat YYYY-MM-DD yang valid. */
+function parseSessionDate(tanggal: unknown): Date | null {
+  if (typeof tanggal !== 'string' || !DATE_RE.test(tanggal)) return null;
+  const d = new Date(tanggal);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Selisih hari (bulat ke bawah) antara hari ini dan tanggal sesi. Negatif = masa depan. */
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 3600 * 24));
+}
+
+// ============================================================================
+// Rate Limit Login (in-memory) — mencegah brute-force password/PIN.
+// Dihitung per kombinasi IP + username. Di balik reverse proxy (mis. Cloud Run),
+// set TRUST_PROXY=1 supaya req.ip berisi IP klien asli, bukan IP proxy.
+// ============================================================================
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+const loginFailures = new Map<string, { count: number; firstAt: number }>();
+
+function loginRateKey(req: Request, username: string): string {
+  return `${req.ip}|${username.toLowerCase()}`;
+}
+
+/** Sisa detik penguncian, atau 0 kalau boleh mencoba login. */
+function loginLockedFor(key: string): number {
+  const entry = loginFailures.get(key);
+  if (!entry) return 0;
+  const elapsed = Date.now() - entry.firstAt;
+  if (elapsed > LOGIN_WINDOW_MS) {
+    loginFailures.delete(key);
+    return 0;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES ? Math.ceil((LOGIN_WINDOW_MS - elapsed) / 1000) : 0;
+}
+
+function recordLoginFailure(key: string): void {
+  const now = Date.now();
+  const entry = loginFailures.get(key);
+  if (!entry || now - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.set(key, { count: 1, firstAt: now });
+  } else {
+    entry.count++;
+  }
+  // Cegah Map tumbuh tanpa batas
+  if (loginFailures.size > 10000) {
+    for (const [k, v] of loginFailures) {
+      if (now - v.firstAt > LOGIN_WINDOW_MS) loginFailures.delete(k);
+    }
+  }
+}
+
+// Endpoint yang boleh diakses TANPA token sesi. Endpoint delegasi ketua kelas
+// divalidasi dengan token delegasi masing-masing di handler-nya.
+const PUBLIC_API_PATHS = new Set([
+  '/health',
+  '/auth/login',
+  '/auth/logout',
+  '/delegation/verify',
+  '/delegation/session',
+  '/delegation/submit',
+]);
+
+const ALLOWED_SEQUENCE_ENTITIES = new Set(['users', 'students', 'attendance', 'audit_logs', 'classes', 'subjects']);
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+  }
+
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+
+  // ============================================================================
+  // Auth Global: seluruh /api/* WAJIB token sesi yang sah, kecuali daftar publik.
+  // Identitas & peran pengguna diambil dari sesi (res.locals.actor), TIDAK PERNAH
+  // dari body/query request.
+  // ============================================================================
+  app.use('/api', (req: Request, res: Response, next) => {
+    if (PUBLIC_API_PATHS.has(req.path)) return next();
+    const actor = requireAuth(req, res);
+    if (!actor) return; // requireAuth sudah mengirim 401
+    res.locals.actor = actor;
+    next();
+  });
 
   // ============================================================================
   // Endpoints Informasi & Health Check
@@ -182,8 +306,8 @@ async function startServer() {
   // Authoritative Sequence Allocation Endpoint (Single Source of Truth)
   app.post('/api/sequence/allocate', (req: Request, res: Response) => {
     const { entity, count = 1 } = req.body;
-    if (!entity) {
-      return res.status(400).json({ success: false, error: 'Parameter entity wajib diisi.' });
+    if (!entity || !ALLOWED_SEQUENCE_ENTITIES.has(String(entity))) {
+      return res.status(400).json({ success: false, error: 'Parameter entity tidak valid.' });
     }
     const safeCount = Math.min(Math.max(1, Number(count) || 1), 1000);
     const allocatedIds = allocateSequence(String(entity), safeCount);
@@ -257,12 +381,7 @@ async function startServer() {
   // ATURAN 1: PENGHAPUSAN ABSENSI DENGAN BATAS 7 HARI (Server-Side)
   // ============================================================================
   app.post('/api/attendance/delete', (req: Request, res: Response) => {
-    // Identitas & role WAJIB berasal dari sesi terverifikasi, bukan dari body
-    // request — kalau tidak, siapapun bisa klaim role:"admin" lewat curl untuk
-    // melewati aturan retensi 7 hari.
-    const actor = requireAuth(req, res);
-    if (!actor) return;
-
+    const actor = getActor(res);
     const { class_id, subject_id, tanggal } = req.body;
 
     if (!class_id || !tanggal) {
@@ -272,14 +391,13 @@ async function startServer() {
       });
     }
 
-    const today = new Date();
-    const entryDate = new Date(tanggal);
-    if (isNaN(entryDate.getTime())) {
-      return res.status(400).json({ success: false, error: 'Format tanggal tidak valid.' });
+    const entryDate = parseSessionDate(tanggal);
+    if (!entryDate) {
+      return res.status(400).json({ success: false, error: 'Format tanggal harus YYYY-MM-DD yang valid.' });
     }
 
-    const diffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
-    const isAdmin = actor.roles.includes('admin') || actor.roles.includes('superadmin');
+    const diffDays = daysSince(entryDate);
+    const isAdmin = hasAdminRole(actor.roles);
 
     // PENEGAKAN ATURAN: Maksimal 7 hari
     if (diffDays > 7 && !isAdmin) {
@@ -290,21 +408,15 @@ async function startServer() {
       });
     }
 
-    // PENEGAKAN OTORISASI GURU
-    if (!isAdmin) {
-      const authCheck = verifyTeacherAuthorization(
-        actor.id,
-        subject_id !== undefined ? (subject_id === null ? null : Number(subject_id)) : null,
-        Number(class_id),
-        actor.roles
-      );
-      if (!authCheck.allowed) {
-        return res.status(403).json({ success: false, error: authCheck.error });
-      }
-    }
-
     const normalizedSubjectId =
       subject_id === null || subject_id === undefined ? null : Number(subject_id);
+
+    // PENEGAKAN OTORISASI GURU (selalu dijalankan untuk non-admin)
+    const authCheck = verifyTeacherAuthorization(actor.id, normalizedSubjectId, Number(class_id), actor.roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
+    }
+
     const deletedCount = Repo.attendance.deleteSession({
       classId: Number(class_id),
       subjectId: normalizedSubjectId,
@@ -328,15 +440,14 @@ async function startServer() {
 
   // Validasi pra-penghapusan (probe)
   app.post('/api/attendance/validate-delete', (req: Request, res: Response) => {
-    const { tanggal, role } = req.body;
-    if (!tanggal) {
-      return res.status(400).json({ allowed: false, error: 'Tanggal sesi absensi wajib disertakan.' });
+    const { tanggal } = req.body;
+    const entryDate = parseSessionDate(tanggal);
+    if (!entryDate) {
+      return res.status(400).json({ allowed: false, error: 'Tanggal sesi absensi (YYYY-MM-DD) wajib disertakan.' });
     }
 
-    const today = new Date();
-    const entryDate = new Date(tanggal);
-    const diffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
-    const isAdmin = role === 'admin' || role === 'superadmin';
+    const diffDays = daysSince(entryDate);
+    const isAdmin = hasAdminRole(getActor(res).roles);
 
     if (diffDays > 7 && !isAdmin) {
       return res.status(403).json({
@@ -357,14 +468,10 @@ async function startServer() {
   // ATURAN 2: INPUT ABSENSI DENGAN VALIDASI OTORISASI & ATURAN 85% AUTO-ALERT
   // ============================================================================
   app.post('/api/attendance/submit', (req: Request, res: Response) => {
-    // Identitas WAJIB dari sesi terverifikasi — sebelumnya endpoint ini percaya
-    // begitu saja pada `recorded_by`/role yang dikirim client, jadi siapapun
-    // bisa klaim jadi guru lain (memalsukan siapa yang mengisi absensi) atau
-    // memilih recorded_via bebas untuk melewati cek otorisasi pairing di bawah.
-    const actor = requireAuth(req, res);
-    if (!actor) return;
-
-    const { class_id, subject_id, tanggal, recorded_via, entries } = req.body;
+    const actor = getActor(res);
+    const { class_id, subject_id, tanggal, entries } = req.body;
+    const recorded_via: string = req.body.recorded_via || 'guru';
+    const recorded_by = actor.id;
 
     if (!class_id || !tanggal || !entries || !Array.isArray(entries)) {
       return res.status(400).json({
@@ -373,96 +480,59 @@ async function startServer() {
       });
     }
 
-    const allowedRecordedVia = ['guru', 'wali', 'bk_manual', 'upload_hardcopy'];
-    if (!allowedRecordedVia.includes(recorded_via)) {
-      // 'ketua_kelas_delegasi' & nilai lain HARUS lewat /api/delegation/submit
-      // (diverifikasi dengan token delegasi), bukan endpoint guru langsung ini.
-      return res.status(400).json({
-        success: false,
-        error: `recorded_via '${recorded_via}' tidak valid untuk endpoint ini.`,
-      });
-    }
-
     // 1. Validasi Format & Integritas Tanggal
-    const today = new Date();
-    const entryDate = new Date(tanggal);
-    if (isNaN(entryDate.getTime())) {
+    const entryDate = parseSessionDate(tanggal);
+    if (!entryDate) {
       return res.status(400).json({ success: false, error: 'Format tanggal harus YYYY-MM-DD yang valid.' });
     }
 
     // Tanggal tidak boleh di masa depan melebihi toleransi 1 hari (karena timezone)
-    const futureDiffMs = entryDate.getTime() - today.getTime();
-    if (futureDiffMs > 24 * 3600 * 1000) {
+    if (entryDate.getTime() - Date.now() > 24 * 3600 * 1000) {
       return res.status(400).json({
         success: false,
         error: 'Validasi Server Gagal: Tanggal sesi absensi tidak boleh berada di masa depan.',
       });
     }
 
-    const isAdmin = actor.roles.includes('admin') || actor.roles.includes('superadmin');
-    const isBk = actor.roles.includes('bk');
-    const pastDiffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+    const roles = actor.roles;
+    const isAdmin = hasAdminRole(roles);
 
-    // Input historis (backfill) > 7 hari hanya boleh Admin atau BK (bk_manual/upload_hardcopy)
-    if (pastDiffDays > 7 && !isAdmin) {
-      const isBkBackfill = (recorded_via === 'bk_manual' || recorded_via === 'upload_hardcopy') && isBk;
-      if (!isBkBackfill) {
-        return res.status(403).json({
-          success: false,
-          error: `Otorisasi Ditolak Server: Sesi tanggal ${tanggal} (${pastDiffDays} hari lalu) melebihi batas toleransi penginputan 7 hari. Data historis > 7 hari hanya dapat dimasukkan oleh Administrator atau BK.`,
-        });
-      }
-    }
-
-    // 2. Validasi Otorisasi: BK/upload_hardcopy wajib role BK-atau-admin; selain itu
-    // (guru/wali) wajib lolos verifikasi pairing/wali-kelas seperti biasa.
-    if (recorded_via === 'bk_manual' || recorded_via === 'upload_hardcopy') {
-      if (!isAdmin && !isBk) {
-        return res.status(403).json({
-          success: false,
-          error: 'Otorisasi Ditolak Server: entri absensi manual (BK) hanya boleh dilakukan oleh akun BK atau Administrator.',
-        });
-      }
-    } else if (!isAdmin) {
-      const authResult = verifyTeacherAuthorization(
-        actor.id,
-        subject_id !== null && subject_id !== undefined ? Number(subject_id) : null,
-        Number(class_id),
-        actor.roles
-      );
+    // 2. Jalur pencatatan (recorded_via) hanya dari daftar resmi, dan masing-masing
+    //    punya syarat peran sendiri. Delegasi ketua kelas WAJIB lewat /api/delegation/submit.
+    const normalizedSubjectId = subject_id !== null && subject_id !== undefined ? Number(subject_id) : null;
+    if (recorded_via === 'guru' || recorded_via === 'wali') {
+      const authResult = verifyTeacherAuthorization(recorded_by, normalizedSubjectId, Number(class_id), roles);
       if (!authResult.allowed) {
         return res.status(403).json({ success: false, error: authResult.error });
       }
+    } else if (recorded_via === 'bk_manual') {
+      if (!isAdmin && !roles.includes('bk')) {
+        return res.status(403).json({ success: false, error: 'Otorisasi Ditolak Server: input manual BK khusus Guru BK / Administrator.' });
+      }
+    } else if (recorded_via === 'upload_hardcopy') {
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: 'Otorisasi Ditolak Server: unggah hardcopy khusus Administrator.' });
+      }
+    } else {
+      return res.status(400).json({ success: false, error: `Jalur pencatatan '${recorded_via}' tidak dikenal.` });
     }
 
-    // 3. Validasi Keabsahan Setiap Entry Absensi
-    const validStatuses = ['H', 'I', 'S', 'A'];
-    for (const item of entries) {
-      if (!item.student_id || !validStatuses.includes(item.status)) {
-        return res.status(400).json({
-          success: false,
-          error: `Entri absensi tidak valid: ID siswa #${item.student_id} dengan status '${item.status}'. Status harus salah satu dari: H, I, S, A.`,
-        });
-      }
+    // 3. Batas toleransi backdate 7 hari untuk non-admin (BK manual dikecualikan)
+    const pastDiffDays = daysSince(entryDate);
+    if (pastDiffDays > 7 && !isAdmin && recorded_via !== 'bk_manual') {
+      return res.status(403).json({
+        success: false,
+        error: `Otorisasi Ditolak Server: Sesi tanggal ${tanggal} (${pastDiffDays} hari lalu) melebihi batas toleransi penginputan 7 hari. Data historis > 7 hari hanya dapat dimasukkan oleh Administrator.`,
+      });
+    }
 
-      // Validasi siswa memang terdaftar pada kelas tersebut
-      const foundStudent = Repo.students.byId(Number(item.student_id));
-      if (!foundStudent) {
-        return res.status(404).json({
-          success: false,
-          error: `Siswa ID #${item.student_id} tidak terdaftar di database sekolah.`,
-        });
-      }
-      if (foundStudent.class_id !== Number(class_id)) {
-        return res.status(400).json({
-          success: false,
-          error: `Integritas Data Gagal: Siswa ${foundStudent.nama} bukan anggota kelas ID #${class_id}.`,
-        });
-      }
+    // Validasi Keabsahan Setiap Entry Absensi
+    const entriesError = validateAttendanceEntries(entries, Number(class_id));
+    if (entriesError) {
+      return res.status(entriesError.status).json({ success: false, error: entriesError.error });
     }
 
     // 4. Lakukan Idempotent UPSERT di SQLite
-    const normalizedSubjectId = subject_id !== null && subject_id !== undefined ? Number(subject_id) : null;
     let created = 0;
     let updated = 0;
 
@@ -474,8 +544,8 @@ async function startServer() {
         tanggal,
         status: item.status,
         notes: item.notes,
-        recorded_by: actor.id,
-        recorded_via: recorded_via,
+        recorded_by,
+        recorded_via,
       });
       if (result.created) created++;
       else updated++;
@@ -601,21 +671,23 @@ async function startServer() {
   // Pengesahan Akademik Server (Academic Clearance Gate):
   // Menolak pengesahan kelulusan / kenaikan kelas jika kehadiran < 85% tanpa dispensasi resmi
   app.post('/api/students/academic-clearance', (req: Request, res: Response) => {
-    const actor = requireAuth(req, res);
-    if (!actor) return;
+    const actor = getActor(res);
+    const { student_id, override_reason } = req.body;
+    const admin_override = Boolean(req.body.admin_override);
 
-    const { student_id, admin_override, override_reason } = req.body;
-
-    // Dispensasi (admin_override) hanya sah kalau PENGIRIMNYA sungguh Administrator —
-    // sebelumnya endpoint ini percaya begitu saja pada flag admin_override dari
-    // body, jadi siapapun bisa melewati syarat kehadiran minimal 85% hanya
-    // dengan mengirim admin_override:true tanpa login sebagai admin sama sekali.
-    const isAdmin = actor.roles.includes('admin') || actor.roles.includes('superadmin');
-    const effectiveOverride = Boolean(admin_override) && isAdmin;
-    if (admin_override && !isAdmin) {
+    // Dispensasi (override) hanya sah dari Administrator / Kepala Sekolah yang login.
+    if (admin_override && !hasAdminRole(actor.roles) && !actor.roles.includes('kepsek')) {
       return res.status(403).json({
         success: false,
-        error: 'Otorisasi Ditolak Server: dispensasi pengesahan akademik hanya bisa diberikan oleh Administrator.',
+        clearance_granted: false,
+        error: 'Otorisasi Ditolak Server: dispensasi pengesahan akademik khusus Administrator / Kepala Sekolah.',
+      });
+    }
+    if (admin_override && !String(override_reason || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        clearance_granted: false,
+        error: 'Alasan dispensasi (override_reason) wajib diisi.',
       });
     }
 
@@ -627,7 +699,7 @@ async function startServer() {
     const stats = calculateStudentAttendanceStats(student.id);
 
     // PENEGAKAN ATURAN 85%: Jika kehadiran < 85% dan tidak ada override admin resmi
-    if (!stats.meets85Percent && !effectiveOverride) {
+    if (!stats.meets85Percent && !admin_override) {
       return res.status(422).json({
         success: false,
         clearance_granted: false,
@@ -652,7 +724,7 @@ async function startServer() {
       'Pengesahan Akademik',
       'Akademik',
       actor.nama,
-      `Siswa NIS ${student.nis} (${student.nama}) disahkan dengan kehadiran ${stats.rate}% (Override: ${effectiveOverride})`
+      `Siswa NIS ${student.nis} (${student.nama}) disahkan dengan kehadiran ${stats.rate}% (Override: ${admin_override})`
     );
 
     return res.json({
@@ -662,10 +734,10 @@ async function startServer() {
       student_id: student.id,
       nama: student.nama,
       attendance_rate: stats.rate,
-      is_override: effectiveOverride,
-      override_reason: effectiveOverride ? override_reason || null : null,
+      is_override: Boolean(admin_override),
+      override_reason: override_reason || null,
       certified_at: new Date().toISOString(),
-      message: effectiveOverride
+      message: admin_override
         ? `Pengesahan akademik disetujui melalui dispensasi khusus administrator (Alasan: ${override_reason}).`
         : `Pengesahan akademik disetujui server: Siswa memenuhi standar kehadiran sekolah (≥ 85%).`,
     });
@@ -675,15 +747,16 @@ async function startServer() {
   // ATURAN 4: VALIDASI PENILAIAN SISWA & OTORISASI GURU
   // ============================================================================
   app.post('/api/grades/submit', (req: Request, res: Response) => {
-    const { teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, scores } = req.body;
+    // Guru penilai = pengguna yang login (bukan teacher_id dari body).
+    const actor = getActor(res);
+    const teacher_id = actor.id;
+    const { subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, scores } = req.body;
 
-    if (!teacher_id || !subject_id || !class_id || !nama_kegiatan || !scores || !Array.isArray(scores)) {
+    if (!subject_id || !class_id || !nama_kegiatan || !scores || !Array.isArray(scores)) {
       return res.status(400).json({ success: false, error: 'Data penilaian tidak lengkap.' });
     }
 
-    const teacher = Repo.users.byId(Number(teacher_id));
-    const roles = teacher?.roles || [];
-    const authCheck = verifyTeacherAuthorization(Number(teacher_id), Number(subject_id), Number(class_id), roles);
+    const authCheck = verifyTeacherAuthorization(teacher_id, Number(subject_id), Number(class_id), actor.roles);
     if (!authCheck.allowed) {
       return res.status(403).json({ success: false, error: authCheck.error });
     }
@@ -726,7 +799,7 @@ async function startServer() {
 
     const newActivity: GradeActivity = {
       id: activityId,
-      teacher_id: Number(teacher_id),
+      teacher_id,
       subject_id: Number(subject_id),
       class_id: Number(class_id),
       nama_kegiatan,
@@ -748,32 +821,36 @@ async function startServer() {
   // ============================================================================
   // ATURAN 5: DELEGASI KETUA KELAS LINTAS-DEVICE & EXPIRY 24 JAM
   // ============================================================================
-  app.post('/api/tokens/register', (req: Request, res: Response) => {
-    // WAJIB login — sebelumnya endpoint ini menerima objek token APAPUN tanpa
-    // autentikasi, jadi siapapun bisa mendaftarkan token delegasi "aktif" palsu
-    // untuk kelas manapun (lalu memakainya lewat /api/delegation/submit untuk
-    // menyuntik data absensi palsu tanpa pernah login sebagai guru).
-    const actor = requireAuth(req, res);
-    if (!actor) return;
-
-    const tokenObj = req.body;
-    if (!tokenObj || !tokenObj.token || !tokenObj.class_id) {
-      return res.status(400).json({ success: false, error: 'Data token tidak valid.' });
+  // Penerbitan token delegasi: HANYA server yang membuat string token (acak
+  // kriptografis 192-bit) dan menentukan masa berlaku (maks. 24 jam). Penerbit
+  // wajib Wali Kelas dari kelas tsb atau Administrator.
+  app.post('/api/delegation/create', (req: Request, res: Response) => {
+    const actor = getActor(res);
+    const classId = Number(req.body?.class_id);
+    if (!classId || !Repo.classes.byId(classId)) {
+      return res.status(400).json({ success: false, error: 'Kelas tujuan delegasi tidak valid.' });
+    }
+    const authCheck = verifyTeacherAuthorization(actor.id, null, classId, actor.roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
     }
 
-    const isAdmin = actor.roles.includes('admin') || actor.roles.includes('superadmin');
-    const requester = Repo.users.byId(actor.id);
-    const isWaliOfClass = requester?.kelas_wali_id === Number(tokenObj.class_id);
-    if (!isAdmin && !isWaliOfClass) {
-      return res.status(403).json({
-        success: false,
-        error: 'Otorisasi Ditolak Server: hanya Wali Kelas dari kelas terkait (atau Administrator) yang boleh membuat token delegasi Ketua Kelas.',
-      });
-    }
+    const expiryHours = Math.min(Math.max(1, Number(req.body?.expiry_hours) || 24), 24);
+    const now = Date.now();
+    const expiresAtMillis = now + expiryHours * 3600 * 1000;
+    const newToken = {
+      token: `kk_${randomBytes(24).toString('base64url')}`,
+      class_id: classId,
+      status: 'aktif' as const,
+      created_at: new Date(now).toISOString(),
+      created_by: actor.id,
+      expires_at: new Date(expiresAtMillis).toISOString(),
+      expires_at_millis: expiresAtMillis,
+    };
+    Repo.tokens.upsert(newToken);
+    recordAudit('Buat Delegasi', 'Absensi', actor.nama, `Kelas #${classId}, berlaku ${expiryHours} jam`);
 
-    // created_by WAJIB actor yang login, bukan nilai klaim dari body.
-    Repo.tokens.upsert({ ...tokenObj, class_id: Number(tokenObj.class_id), created_by: actor.id });
-    return res.json({ success: true, message: 'Token berhasil didaftarkan di server.' });
+    return res.json({ success: true, token: newToken });
   });
 
   app.get('/api/delegation/verify', (req: Request, res: Response) => {
@@ -833,6 +910,9 @@ async function startServer() {
 
   app.post('/api/delegation/submit', (req: Request, res: Response) => {
     const { token, class_id, tanggal, entries } = req.body;
+    if (typeof token !== 'string' || !token) {
+      return res.status(400).json({ success: false, error: 'Parameter token wajib diisi.' });
+    }
     const found = Repo.tokens.byToken(token);
     if (!found) {
       return res.status(404).json({ success: false, error: 'Token delegasi tidak sah.' });
@@ -849,9 +929,26 @@ async function startServer() {
       return res.status(403).json({ success: false, error: 'Token ini tidak berlaku untuk kelas yang diajukan.' });
     }
 
+    // Validasi tanggal: tidak di masa depan dan tidak lebih dari 7 hari ke belakang
+    const entryDate = parseSessionDate(tanggal);
+    if (!entryDate) {
+      return res.status(400).json({ success: false, error: 'Format tanggal harus YYYY-MM-DD yang valid.' });
+    }
+    const pastDiffDays = daysSince(entryDate);
+    if (entryDate.getTime() - Date.now() > 24 * 3600 * 1000 || pastDiffDays > 7) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tanggal presensi delegasi harus hari ini atau maksimal 7 hari ke belakang.',
+      });
+    }
+
     // Submit ke attendance SQLite
     if (!entries || !Array.isArray(entries)) {
       return res.status(400).json({ success: false, error: 'Parameter entries[] wajib diisi.' });
+    }
+    const entriesError = validateAttendanceEntries(entries, found.class_id);
+    if (entriesError) {
+      return res.status(entriesError.status).json({ success: false, error: entriesError.error });
     }
     for (const item of entries) {
       Repo.attendance.upsert({
@@ -865,6 +962,13 @@ async function startServer() {
         recorded_via: 'ketua_kelas_delegasi',
       });
     }
+
+    recordAudit(
+      'Submit Absensi Delegasi',
+      'Absensi',
+      `Ketua Kelas (token kelas #${found.class_id})`,
+      `Tanggal: ${tanggal}, Total: ${entries.length} siswa`
+    );
 
     return res.json({
       success: true,
@@ -922,6 +1026,9 @@ async function startServer() {
   });
 
   app.post('/api/settings', (req: Request, res: Response) => {
+    if (!hasAdminRole(getActor(res).roles)) {
+      return res.status(403).json({ success: false, error: 'Otorisasi Ditolak: aksi ini khusus Administrator.' });
+    }
     const settings = req.body;
     if (!settings || typeof settings !== 'object') {
       return res.status(400).json({ success: false, error: 'Data pengaturan sekolah tidak valid.' });
@@ -1004,40 +1111,36 @@ async function startServer() {
     return res.json({ success: true, activities, values });
   });
 
-  // REST API Endpoint for server-side credential verification
+  // Login yang menerbitkan token sesi server (Bearer token), dipakai untuk
+  // mengakses seluruh endpoint /api/* yang butuh otorisasi.
   // PENTING: TIDAK ADA master password / backdoor. Verifikasi murni terhadap
   // password_hash (sha256:<salt>:<hash>) milik akun yang bersangkutan.
-  app.post('/api/auth/verify', async (req: Request, res: Response) => {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
-    }
-    const user = Repo.users.all().find((u) => u.username === username);
-    if (!user || !user.is_active) {
-      return res.status(401).json({ success: false, message: 'Akun tidak ditemukan atau nonaktif.' });
-    }
-    const isValid = await verifyPasswordAgainstHash(String(password), user.password_hash);
-    return res.json({
-      success: isValid,
-      message: isValid ? 'Kredensial valid' : 'Password atau PIN tidak cocok',
-    });
-  });
-
-  // Login sungguhan yang menerbitkan token sesi server (Bearer token), dipakai
-  // untuk mengakses endpoint yang butuh otorisasi (mis. /api/sync/pull, /api/sync/push).
+  // (Endpoint lama /api/auth/verify dihapus: ia hanya menjadi "oracle" tebak
+  // password tanpa menerbitkan sesi.)
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     const { username, password } = req.body;
-    if (!username || !password) {
+    if (typeof username !== 'string' || !username.trim() || !password) {
       return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
     }
-    const user = Repo.users.all().find((u) => u.username === username);
-    if (!user || !user.is_active) {
-      return res.status(401).json({ success: false, error: 'Akun tidak ditemukan atau nonaktif.' });
+    const cleanUsername = username.trim().toLowerCase();
+    const rateKey = loginRateKey(req, cleanUsername);
+    const lockedFor = loginLockedFor(rateKey);
+    if (lockedFor > 0) {
+      res.setHeader('Retry-After', String(lockedFor));
+      return res.status(429).json({
+        success: false,
+        error: `Terlalu banyak percobaan login gagal. Coba lagi dalam ${Math.ceil(lockedFor / 60)} menit.`,
+      });
     }
-    const isValid = await verifyPasswordAgainstHash(String(password), user.password_hash);
-    if (!isValid) {
-      return res.status(401).json({ success: false, error: 'Password atau PIN tidak cocok.' });
+
+    // Pesan gagal sengaja seragam agar tidak bisa dipakai menebak username yang terdaftar.
+    const user = Repo.users.all().find((u) => u.username.toLowerCase() === cleanUsername);
+    const isValid = !!user && user.is_active && (await verifyPasswordAgainstHash(String(password), user.password_hash));
+    if (!user || !isValid) {
+      recordLoginFailure(rateKey);
+      return res.status(401).json({ success: false, error: 'Username atau password/PIN salah, atau akun nonaktif.' });
     }
+    loginFailures.delete(rateKey);
     const { token, expiresAtMillis } = Repo.sessions.create(user.id);
     const { password_hash, ...safeUser } = user;
     return res.json({
