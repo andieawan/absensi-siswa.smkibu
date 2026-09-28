@@ -93,10 +93,10 @@ export default function App() {
    * Protected user selection:
    * STRICT REQUIREMENT: Cannot be invoked without credential verification (password/PIN).
    */
-  const handleSelectUser = (
+  const handleSelectUser = async (
     userId: number,
     passwordAttempt?: string
-  ): { success: boolean; error?: string } => {
+  ): Promise<{ success: boolean; error?: string }> => {
     if (!passwordAttempt) {
       console.warn('handleSelectUser ditolak: Kredensial password/PIN wajib disertakan dan diverifikasi.');
       return {
@@ -105,7 +105,7 @@ export default function App() {
       };
     }
 
-    const verification = authService.verifyCredentials(userId, passwordAttempt);
+    const verification = await authService.verifyCredentials(userId, passwordAttempt);
     if (!verification.success || !verification.user) {
       return {
         success: false,
@@ -343,7 +343,7 @@ export default function App() {
           isOpen={Boolean(pendingSwitchUserId)}
           targetUser={allUsers.find((u) => u.id === pendingSwitchUserId) || null}
           onClose={() => setPendingSwitchUserId(null)}
-          onConfirmSwitch={(password) => handleSelectUser(pendingSwitchUserId, password)}
+          onConfirmSwitch={(password) => handleSelectUser(pendingSwitchUserId!, password)}
         />
       )}
     </div>

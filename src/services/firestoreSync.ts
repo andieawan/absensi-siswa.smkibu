@@ -8,7 +8,6 @@ import {
   collection,
   runTransaction,
 } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { storage } from './storage';
 import {
@@ -25,16 +24,19 @@ import {
 } from '../types';
 
 /**
- * Inisialisasi koneksi Cloud Firestore dan otentikasi sesi anonim
+ * Cek koneksi Cloud Firestore.
+ * SENGAJA TIDAK melakukan signInAnonymously — sesi anonim membuat semua
+ * Firestore Rules yang mensyaratkan "isSignedIn()" lolos untuk siapa pun yang
+ * sekadar membuka aplikasi, tanpa login sama sekali. Sinkronisasi Firestore
+ * hanya akan berjalan untuk user yang benar-benar sudah sign-in (misalnya lewat
+ * Google Sign-In / Workspace) — untuk user yang hanya login lokal (username/PIN),
+ * sinkronisasi Firestore tetap nonaktif sampai autentikasi sungguhan di backend tersedia.
  */
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
     if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch (authErr) {
-        console.warn('[Firebase] Auth probe:', authErr);
-      }
+      console.info('[Firebase] Tidak ada sesi Firebase Auth yang sah — Firestore tidak diakses.');
+      return false;
     }
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log('[Firebase] Firestore connected successfully');
@@ -216,9 +218,11 @@ export async function syncFirestoreToStorage(): Promise<{
         const currentUsers = storage.getUsers();
         const mergedUsers = remoteUsers.map((ru) => {
           const localUser = currentUsers.find((cu) => cu.id === ru.id);
+          // password_hash TIDAK PERNAH disimpan/dibaca dari Firestore (lihat fungsi push di atas) —
+          // selalu pakai hash lokal milik device ini agar tidak ada fallback plaintext yang bisa menimpa akun.
           return {
             ...ru,
-            password_hash: ru.password_hash || localUser?.password_hash || 'demo123',
+            password_hash: localUser?.password_hash,
           };
         });
         storage.saveUsers(mergedUsers);

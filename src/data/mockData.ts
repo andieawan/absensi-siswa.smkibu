@@ -27,11 +27,15 @@ export const INITIAL_SUBJECTS: Subject[] = [
   { id: 5, name: 'Bimbingan Konseling' },
 ];
 
+// Password demo (HANYA untuk pengembangan/testing lokal, WAJIB diganti sebelum deployment sungguhan):
+// pak.budi -> admin123 | ibu.siti -> guru123 | pak.hendra -> guru123 | bu.ratna -> kepsek123 | bu.maya -> bk123
+// Hash di bawah adalah SHA-256+salt sungguhan dari password di atas (format "sha256:<salt>:<hash>"),
+// BUKAN string yang menyisipkan password polos seperti sebelumnya.
 export const INITIAL_USERS: User[] = [
   {
     id: 1,
     username: 'pak.budi',
-    password_hash: '$2b$12$eX4mple.budi_admin123.8',
+    password_hash: 'sha256:277220ab059ce99329a328260655b391:78b3dbaccce3f4b5abb48fed65a3996e4baabe541c3f276bec4bfdd100b24c1d',
     nama: 'Budi Santoso, S.Pd., M.Kom.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -44,7 +48,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 2,
     username: 'ibu.siti',
-    password_hash: '$2b$12$eX4mple.siti_guru123.7',
+    password_hash: 'sha256:d93d421bedd86ddbc2990b79d713f757:cac9976e0518e6d070c8300599b85eb96789efa87300303bc722228889e82dd3',
     nama: 'Siti Aminah, S.Pd.',
     kelas_wali_id: 1, // Wali Kelas XI DKV 1
     foto_profil_url: null,
@@ -57,7 +61,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 3,
     username: 'pak.hendra',
-    password_hash: '$2b$12$eX4mple.hendra_guru123.7',
+    password_hash: 'sha256:c7b15b7772a3e7697b4a2027b687afe2:3b22d9389b5ebe25824661557915b31a7c364f26069127c6d86e96a4f4fe4ffc',
     nama: 'Hendra Pratama, S.Si.',
     kelas_wali_id: 2, // Wali Kelas X RPL 1
     foto_profil_url: null,
@@ -70,7 +74,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 4,
     username: 'bu.ratna',
-    password_hash: '$2b$12$eX4mple.ratna_kepsek123.9',
+    password_hash: 'sha256:c2a1f379070c84693e60359cf63a14ea:348f8e873a8d6b1da662a0ed60f7f17f974ddb1477e1460709d8c639c91455f1',
     nama: 'Dra. Ratna Kusuma, M.Pd.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -83,7 +87,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 5,
     username: 'bu.maya',
-    password_hash: '$2b$12$eX4mple.maya_bk123.5',
+    password_hash: 'sha256:65e8416f9557660b35c0accf0d513723:7040fd3563c716c160976e8fc48f4af9e57e046bf647b07aecf70c28e792e66b',
     nama: 'Maya Rosita, S.Psi.',
     kelas_wali_id: null,
     foto_profil_url: null,

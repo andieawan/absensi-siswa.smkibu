@@ -10,8 +10,12 @@ service cloud.firestore {
 
     // --- Helper Functions ---
 
+    // Menolak sesi anonim: signInAnonymously() membuat request.auth != null
+    // untuk SIAPA PUN yang sekadar membuka aplikasi tanpa login sama sekali.
+    // isSignedIn() harus berarti benar-benar terautentikasi, bukan sekadar punya sesi.
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
     function incoming() {
@@ -22,11 +26,13 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // Status admin ditentukan HANYA lewat dokumen /admins/{uid}, bukan email
+    // hardcoded di source rules (yang publik di repository). Tambahkan dokumen
+    // /admins/{uid-akun-admin-anda} secara manual di Firebase Console untuk
+    // menjadikan sebuah akun sebagai admin.
     function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.email == 'andiawan69@gmail.com') ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function isTeacher() {

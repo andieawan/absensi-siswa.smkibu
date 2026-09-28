@@ -3,14 +3,39 @@ import { storage } from './storage';
 
 const AUTH_STORAGE_KEY = 'go_absen_auth_session_v1';
 
-export function hashPassword(plain: string): string {
-  // Deterministic salt & hash simulation matching standard bcrypt format $2b$12$...
-  let hash = 5381;
-  for (let i = 0; i < plain.length; i++) {
-    hash = (hash * 33) ^ plain.charCodeAt(i);
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return `$2b$12$eX4mple.${hex}.${plain.length}`;
+// Format hash tersimpan: "sha256:<saltHex>:<hashHex>"
+// CATATAN: SHA-256+salt jauh lebih baik dari checksum sebelumnya, tapi tetap
+// bukan pengganti verifikasi password di server. Ini adalah perbaikan sementara
+// selagi migrasi ke backend sungguhan (lihat perintah migrasi database) belum dikerjakan.
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function randomSaltHex(byteLength = 16): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function hashPassword(plain: string, existingSalt?: string): Promise<string> {
+  const salt = existingSalt || randomSaltHex();
+  const hash = await sha256Hex(`${salt}:${plain}`);
+  return `sha256:${salt}:${hash}`;
+}
+
+export async function verifyPasswordAgainstHash(plain: string, stored: string | undefined | null): Promise<boolean> {
+  if (!stored) return false;
+  const parts = stored.split(':');
+  if (parts.length !== 3 || parts[0] !== 'sha256') return false;
+  const [, salt] = parts;
+  const recomputed = await hashPassword(plain, salt);
+  return recomputed === stored;
 }
 
 export interface AuthSession {
@@ -26,12 +51,14 @@ export const authService = {
   hashPassword,
 
   /**
-   * Verify credentials for a given user or user ID
+   * Verify credentials for a given user or user ID.
+   * SATU-SATUNYA jalur valid: password cocok dengan hash tersimpan di user.password_hash.
+   * Tidak ada PIN universal, password default per-peran, atau password=username.
    */
-  verifyCredentials(
+  async verifyCredentials(
     userOrId: User | number,
     passwordAttempt: string
-  ): { success: boolean; user?: User; error?: string } {
+  ): Promise<{ success: boolean; user?: User; error?: string }> {
     if (!passwordAttempt || !passwordAttempt.trim()) {
       return { success: false, error: 'Password / PIN tidak boleh kosong.' };
     }
@@ -54,36 +81,25 @@ export const authService = {
       return { success: false, error: 'Akun ini dalam status nonaktif. Hubungi Administrator.' };
     }
 
-    // Verification Rules:
-    // 1. Universal demo master PIN: '123456'
-    // 2. Generic demo teacher password: 'guru123'
-    // 3. Admin specific default: 'admin123' (if admin/superadmin)
-    // 4. Matches calculated hash from user.password_hash
-    // 5. Matches raw password_hash (if stored as plain text)
-    // 6. Matches user username
-    const calculatedHash = hashPassword(trimmedPassword);
-    const isMasterPin = trimmedPassword === '123456';
-    const isGuruDefault = trimmedPassword === 'guru123';
-    const isAdminDefault = trimmedPassword === 'admin123' && (user.roles.includes('admin') || user.roles.includes('superadmin'));
-    const isKepsekDefault = trimmedPassword === 'kepsek123' && user.roles.includes('kepsek');
-    const isBkDefault = trimmedPassword === 'bk123' && user.roles.includes('bk');
-    const isUsername = trimmedPassword.toLowerCase() === user.username.toLowerCase();
-    const isHashMatched = Boolean(user.password_hash && (user.password_hash === calculatedHash || user.password_hash === trimmedPassword));
-
-    if (isMasterPin || isGuruDefault || isAdminDefault || isKepsekDefault || isBkDefault || isUsername || isHashMatched) {
-      return { success: true, user };
+    if (!user.password_hash) {
+      return { success: false, error: 'Akun ini belum memiliki password terdaftar. Hubungi Administrator.' };
     }
 
-    return { success: false, error: 'Password atau PIN yang dimasukkan tidak sesuai.' };
+    const isHashMatched = await verifyPasswordAgainstHash(trimmedPassword, user.password_hash);
+    if (!isHashMatched) {
+      return { success: false, error: 'Password atau PIN yang dimasukkan tidak sesuai.' };
+    }
+
+    return { success: true, user };
   },
 
   /**
    * Performs login with username and password
    */
-  login(
+  async login(
     username: string,
     passwordAttempt: string
-  ): { success: boolean; user?: User; error?: string } {
+  ): Promise<{ success: boolean; user?: User; error?: string }> {
     if (!username || !username.trim()) {
       return { success: false, error: 'Username wajib diisi.' };
     }
@@ -99,7 +115,7 @@ export const authService = {
       return { success: false, error: `Akun dengan username "${username}" tidak ditemukan.` };
     }
 
-    const verification = this.verifyCredentials(user, passwordAttempt);
+    const verification = await this.verifyCredentials(user, passwordAttempt);
     if (!verification.success) {
       return verification;
     }

@@ -59,10 +59,15 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [resettingUser, setResettingUser] = useState<User | null>(null);
   const [newPasswordVal, setNewPasswordVal] = useState<string>('');
 
-  const handleCreateTeacher = (e: React.FormEvent) => {
+  const handleCreateTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const pHash = authService.hashPassword(newTeacherPassword.trim() || 'guru123');
+      const rawPassword = newTeacherPassword.trim();
+      if (!rawPassword) {
+        setFeedback({ type: 'error', text: 'Password awal untuk akun guru wajib diisi.' });
+        return;
+      }
+      const pHash = await authService.hashPassword(rawPassword);
       storage.addUser({
         nama: newTeacherName.trim(),
         username: newTeacherUsername.trim().toLowerCase(),
@@ -81,10 +86,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
     }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resettingUser || !newPasswordVal.trim()) return;
-    const pHash = authService.hashPassword(newPasswordVal.trim());
+    const pHash = await authService.hashPassword(newPasswordVal.trim());
     storage.updateUserPassword(resettingUser.id, pHash);
     // Password reset is deliberately sanitized in audit log (PRD 9.2)
     storage.addAuditLog('Reset Password Guru', 'Akun Guru', resettingUser.nama, `Reset password dilakukan oleh ${currentUser.username}`);

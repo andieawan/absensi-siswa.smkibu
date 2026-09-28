@@ -12,9 +12,6 @@ import {
   AlertCircle,
   KeyRound,
   GraduationCap,
-  Sparkles,
-  Server,
-  Database,
 } from 'lucide-react';
 
 interface LoginGateViewProps {
@@ -22,22 +19,21 @@ interface LoginGateViewProps {
 }
 
 export const LoginGateView: React.FC<LoginGateViewProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState<string>('pak.budi');
-  const [password, setPassword] = useState<string>('123456');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const allUsers = storage.getUsers();
   const settings = storage.getSettings();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      const result = authService.login(username, password);
+      const result = await authService.login(username, password);
       if (result.success && result.user) {
         onLoginSuccess(result.user);
       } else {
@@ -48,13 +44,6 @@ export const LoginGateView: React.FC<LoginGateViewProps> = ({ onLoginSuccess }) 
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickFill = (user: User) => {
-    setUsername(user.username);
-    // pak.budi has admin role, can use admin123 or universal PIN 123456
-    setPassword('123456');
-    setError(null);
   };
 
   return (
@@ -158,66 +147,13 @@ export const LoginGateView: React.FC<LoginGateViewProps> = ({ onLoginSuccess }) 
               <span>{isLoading ? 'Memverifikasi...' : 'Masuk ke Sistem'}</span>
             </button>
           </form>
-
-          {/* Quick Demo Accounts Selection */}
-          <div className="pt-2 border-t border-slate-100 space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <div className="flex items-center gap-1 font-semibold text-slate-700">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Pilih Cepat Akun Demo (1-Klik):</span>
-              </div>
-              <span className="text-[10px] text-slate-400">PIN: 123456</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {allUsers.map((u) => {
-                const isSelected = username.toLowerCase() === u.username.toLowerCase();
-                const roleBadge = u.roles.includes('superadmin')
-                  ? 'Superadmin'
-                  : u.roles.includes('admin')
-                  ? 'Admin'
-                  : u.roles.includes('kepsek')
-                  ? 'Kepsek'
-                  : u.roles.includes('bk')
-                  ? 'BK'
-                  : u.kelas_wali_id
-                  ? 'Wali Kelas'
-                  : 'Guru Mapel';
-
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => handleQuickFill(u)}
-                    className={`p-2 rounded-lg text-left border transition-all text-xs flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 font-semibold ring-1 ring-indigo-500'
-                        : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <div className="truncate font-semibold text-[11px]">{u.nama}</div>
-                    <div className="flex items-center justify-between mt-1 text-[10px] text-slate-500">
-                      <span className="font-mono text-indigo-700">@{u.username}</span>
-                      <span className="px-1.5 py-0.2 bg-white border border-slate-200 rounded font-medium text-[9px]">
-                        {roleBadge}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <p className="text-[10px] text-slate-500 text-center pt-1">
-              Catatan: Setiap akun dilindungi verifikasi kredensial. Anda dapat menggunakan PIN master <code className="font-semibold text-slate-800 bg-slate-100 px-1 rounded">123456</code> atau password spesifik guru.
-            </p>
-          </div>
         </div>
 
         {/* Footer info */}
         <div className="text-center space-y-1 text-slate-400 text-[11px]">
           <div className="flex items-center justify-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Keamanan Terenkripsi & Relasional MySQL Verified</span>
+            <span>Akses dilindungi verifikasi password per akun</span>
           </div>
           <p className="text-[10px] text-slate-500">
             Hak Cipta &copy; {new Date().getFullYear()} {settings.school_name}. Seluruh Hak Dilindungi.

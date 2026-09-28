@@ -14,7 +14,7 @@ interface SwitchUserModalProps {
   isOpen: boolean;
   targetUser: User | null;
   onClose: () => void;
-  onConfirmSwitch: (password: string) => { success: boolean; error?: string };
+  onConfirmSwitch: (password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
@@ -23,29 +23,27 @@ export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
   onClose,
   onConfirmSwitch,
 }) => {
-  const [password, setPassword] = useState<string>('123456');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
 
   if (!isOpen || !targetUser) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsVerifying(true);
 
     try {
-      const result = onConfirmSwitch(password);
+      const result = await onConfirmSwitch(password);
       if (!result.success) {
         setError(result.error || 'Password atau PIN tidak valid.');
-        setIsVerifying(false);
-      } else {
-        // Success handled by parent (modal closes)
-        setIsVerifying(false);
       }
+      // Sukses: parent menutup modal ini sendiri.
     } catch (err: any) {
       setError(err.message || 'Gagal memverifikasi password.');
+    } finally {
       setIsVerifying(false);
     }
   };
@@ -120,7 +118,7 @@ export const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
               </button>
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
-              PIN Master Demo: <span className="font-mono font-semibold text-slate-700">123456</span> atau password akun guru.
+              Masukkan password/PIN milik akun tujuan untuk beralih.
             </p>
           </div>
 
