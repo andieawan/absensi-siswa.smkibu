@@ -23,6 +23,7 @@ import {
   syncFirestoreToStorage,
   initializeBidirectionalSync,
 } from './services/firestoreSync';
+import { initializeSqlBidirectionalSync } from './services/sqlSync';
 import { ShieldCheck, Server, Database, Check, Flame, RefreshCw } from 'lucide-react';
 
 export default function App() {
@@ -70,7 +71,36 @@ export default function App() {
     }
   };
 
-  // Initialize and validate Firestore connection and run bidirectional sync on mount
+  // Sinkronisasi utama: server SQLite sekolah sendiri. Tidak butuh login Google —
+  // berjalan untuk SEMUA user (login lokal username/PIN ataupun Google Workspace),
+  // sehingga inilah jalur sinkronisasi lintas-perangkat utama aplikasi.
+  const runSqlSync = async () => {
+    setSyncStatus('syncing');
+    try {
+      const res = await initializeSqlBidirectionalSync();
+      if (res.success) {
+        setSyncStatus('synced');
+        setSyncedCounts(res.counts);
+        setLastSyncTime(
+          new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        );
+        setAllUsers(storage.getUsers());
+        setClasses(storage.getClasses());
+        setSubjects(storage.getSubjects());
+      } else {
+        setSyncStatus('idle');
+      }
+    } catch {
+      setSyncStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    runSqlSync();
+  }, []);
+
+  // Firestore tetap tersedia sebagai jalur sinkronisasi tambahan khusus untuk
+  // user yang sign-in dengan akun Google Workspace (mis. untuk fitur Docs/Sheets).
   useEffect(() => {
     testFirestoreConnection().then(async (connected) => {
       setFirestoreConnected(connected);
@@ -298,15 +328,14 @@ export default function App() {
             </div>
             <div className="flex items-center gap-1.5 text-slate-600">
               <Database className="w-3.5 h-3.5 text-indigo-600" />
-              <span>MySQL Relational Engine</span>
+              <span>SQLite Relational Engine (Server Sekolah)</span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-700">
-              <Flame className="w-3.5 h-3.5 text-amber-500" />
-              <span>
-                Cloud Firestore Aktif (Sinkron 2-Arah
-                {syncedCounts ? `: ${syncedCounts.students} Siswa, ${syncedCounts.attendance} Absensi` : ''})
-              </span>
-            </div>
+            {firestoreConnected && (
+              <div className="flex items-center gap-1.5 text-slate-700">
+                <Flame className="w-3.5 h-3.5 text-amber-500" />
+                <span>Cloud Firestore Aktif</span>
+              </div>
+            )}
 
             {syncStatus === 'syncing' ? (
               <div className="flex items-center gap-1 text-indigo-600 font-medium">
@@ -316,17 +345,25 @@ export default function App() {
             ) : syncStatus === 'synced' ? (
               <button
                 type="button"
-                onClick={runBidirectionalSync}
-                title={`Sinkronisasi dua arah aktif · Terakhir: ${lastSyncTime || 'Baru saja'}`}
+                onClick={() => {
+                  runSqlSync();
+                  if (firestoreConnected) runBidirectionalSync();
+                }}
+                title={`Sinkronisasi server sekolah aktif · Terakhir: ${lastSyncTime || 'Baru saja'}`}
                 className="flex items-center gap-1 text-emerald-700 font-semibold hover:text-emerald-800 transition-colors"
               >
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Sinkron Dua Arah ({lastSyncTime || 'Lengkap'})</span>
+                <span>
+                  Sinkron Server ({syncedCounts ? `${syncedCounts.students} Siswa, ${syncedCounts.attendance} Absensi` : lastSyncTime || 'Lengkap'})
+                </span>
               </button>
             ) : (
               <button
                 type="button"
-                onClick={runBidirectionalSync}
+                onClick={() => {
+                  runSqlSync();
+                  if (firestoreConnected) runBidirectionalSync();
+                }}
                 className="flex items-center gap-1 text-slate-600 hover:text-indigo-600 transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-slate-400" />

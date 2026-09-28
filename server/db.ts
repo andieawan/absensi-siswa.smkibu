@@ -25,6 +25,7 @@ import {
   INITIAL_SUBJECTS,
   INITIAL_GRADE_ACTIVITIES,
   INITIAL_GRADE_VALUES,
+  INITIAL_SCHOOL_SETTINGS,
 } from '../src/data/mockData';
 import {
   AttendanceRecord,
@@ -36,6 +37,7 @@ import {
   GradeActivity,
   GradeValue,
   KetuaKelasToken,
+  SchoolSettings,
 } from '../src/types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -160,6 +162,19 @@ CREATE TABLE IF NOT EXISTS sequences (
   entity TEXT PRIMARY KEY,
   value INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS school_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  school_name TEXT,
+  logo_url TEXT,
+  tahun_ajaran TEXT,
+  semester TEXT,
+  kepsek_nama TEXT,
+  bk_nama TEXT,
+  backup_retention_weeks INTEGER,
+  last_backup_date TEXT,
+  last_backup_status TEXT
+);
 `);
 
 // ============================================================================
@@ -273,6 +288,22 @@ function seedIfEmpty() {
   for (const [entity, value] of Object.entries(seqRows)) {
     insertSeq.run(entity, value);
   }
+
+  const s = INITIAL_SCHOOL_SETTINGS as SchoolSettings;
+  db.prepare(
+    `INSERT OR REPLACE INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    s.school_name,
+    s.logo_url,
+    s.tahun_ajaran,
+    s.semester,
+    s.kepsek_nama,
+    s.bk_nama,
+    s.backup_retention_weeks,
+    s.last_backup_date ?? null,
+    s.last_backup_status ?? null
+  );
 }
 
 seedIfEmpty();
@@ -414,6 +445,20 @@ function rowToGradeValue(row: any): GradeValue {
   return { activity_id: row.activity_id, student_id: row.student_id, nilai: row.nilai };
 }
 
+function rowToSettings(row: any): SchoolSettings {
+  return {
+    school_name: row.school_name,
+    logo_url: row.logo_url,
+    tahun_ajaran: row.tahun_ajaran,
+    semester: row.semester,
+    kepsek_nama: row.kepsek_nama,
+    bk_nama: row.bk_nama,
+    backup_retention_weeks: row.backup_retention_weeks,
+    last_backup_date: row.last_backup_date ?? undefined,
+    last_backup_status: row.last_backup_status ?? undefined,
+  };
+}
+
 // ============================================================================
 // Data access API digunakan oleh server.ts
 // ============================================================================
@@ -426,6 +471,42 @@ export const Repo = {
       const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
       return row ? rowToUser(row) : undefined;
     },
+    upsert(u: User) {
+      const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(u.id);
+      if (existing) {
+        db.prepare(
+          `UPDATE users SET username = ?, password_hash = COALESCE(?, password_hash), nama = ?, kelas_wali_id = ?, foto_profil_url = ?, is_active = ?, roles = ?, subjects = ?, classes = ? WHERE id = ?`
+        ).run(
+          u.username,
+          u.password_hash ?? null,
+          u.nama,
+          u.kelas_wali_id ?? null,
+          u.foto_profil_url ?? null,
+          u.is_active ? 1 : 0,
+          JSON.stringify(u.roles || []),
+          JSON.stringify(u.subjects || []),
+          JSON.stringify(u.classes || []),
+          u.id
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, foto_profil_url, is_active, created_at, roles, subjects, classes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          u.id,
+          u.username,
+          u.password_hash ?? null,
+          u.nama,
+          u.kelas_wali_id ?? null,
+          u.foto_profil_url ?? null,
+          u.is_active ? 1 : 0,
+          u.created_at,
+          JSON.stringify(u.roles || []),
+          JSON.stringify(u.subjects || []),
+          JSON.stringify(u.classes || [])
+        );
+      }
+    },
   },
   classes: {
     all(): ClassItem[] {
@@ -435,10 +516,21 @@ export const Repo = {
       const row = db.prepare('SELECT * FROM classes WHERE id = ?').get(id);
       return row ? rowToClass(row) : undefined;
     },
+    upsert(c: ClassItem) {
+      db.prepare(
+        `INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, jurusan = excluded.jurusan, angkatan = excluded.angkatan, tahun_ajaran = excluded.tahun_ajaran, semester = excluded.semester`
+      ).run(c.id, c.name, c.jurusan, c.angkatan, c.tahun_ajaran, c.semester);
+    },
   },
   subjects: {
     all(): Subject[] {
       return (db.prepare('SELECT * FROM subjects').all() as any[]).map(rowToSubject);
+    },
+    upsert(s: Subject) {
+      db.prepare(
+        `INSERT INTO subjects (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name`
+      ).run(s.id, s.name);
     },
   },
   students: {
@@ -452,6 +544,12 @@ export const Repo = {
       const row = db.prepare('SELECT * FROM students WHERE id = ?').get(id);
       return row ? rowToStudent(row) : undefined;
     },
+    upsert(s: Student) {
+      db.prepare(
+        `INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET nis = excluded.nis, nama = excluded.nama, jk = excluded.jk, class_id = excluded.class_id, status = excluded.status`
+      ).run(s.id, s.nis, s.nama, s.jk, s.class_id, s.status, s.created_at);
+    },
   },
   pairings: {
     all(): TeacherPairing[] {
@@ -464,6 +562,38 @@ export const Repo = {
         )
         .get(userId, subjectId, classId);
       return !!row;
+    },
+    replaceAll(pairings: TeacherPairing[]) {
+      db.exec('DELETE FROM teacher_subject_class_pairing');
+      const stmt = db.prepare(
+        'INSERT OR IGNORE INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)'
+      );
+      for (const p of pairings) stmt.run(p.user_id, p.subject_id, p.class_id);
+    },
+  },
+  settings: {
+    get(): SchoolSettings {
+      const row = db.prepare('SELECT * FROM school_settings WHERE id = 1').get();
+      return row ? rowToSettings(row) : (INITIAL_SCHOOL_SETTINGS as SchoolSettings);
+    },
+    update(s: SchoolSettings) {
+      db.prepare(
+        `INSERT INTO school_settings (id, school_name, logo_url, tahun_ajaran, semester, kepsek_nama, bk_nama, backup_retention_weeks, last_backup_date, last_backup_status)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET school_name = excluded.school_name, logo_url = excluded.logo_url, tahun_ajaran = excluded.tahun_ajaran,
+           semester = excluded.semester, kepsek_nama = excluded.kepsek_nama, bk_nama = excluded.bk_nama,
+           backup_retention_weeks = excluded.backup_retention_weeks, last_backup_date = excluded.last_backup_date, last_backup_status = excluded.last_backup_status`
+      ).run(
+        s.school_name,
+        s.logo_url,
+        s.tahun_ajaran,
+        s.semester,
+        s.kepsek_nama,
+        s.bk_nama,
+        s.backup_retention_weeks,
+        s.last_backup_date ?? null,
+        s.last_backup_status ?? null
+      );
     },
   },
   attendance: {

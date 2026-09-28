@@ -801,6 +801,68 @@ async function startServer() {
     return res.json({ success: true, data: Repo.subjects.all() });
   });
 
+  // Pengguna (guru/admin/bk/kepsek) — TIDAK PERNAH mengekspos password_hash lewat GET.
+  app.get('/api/users', (req: Request, res: Response) => {
+    const safeUsers = Repo.users.all().map(({ password_hash, ...rest }) => rest);
+    return res.json({ success: true, data: safeUsers });
+  });
+
+  app.get('/api/pairings', (req: Request, res: Response) => {
+    return res.json({ success: true, data: Repo.pairings.all() });
+  });
+
+  app.get('/api/settings', (req: Request, res: Response) => {
+    return res.json({ success: true, data: Repo.settings.get() });
+  });
+
+  app.post('/api/settings', (req: Request, res: Response) => {
+    const settings = req.body;
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ success: false, error: 'Data pengaturan sekolah tidak valid.' });
+    }
+    Repo.settings.update(settings);
+    return res.json({ success: true, message: 'Pengaturan sekolah berhasil disimpan di server.' });
+  });
+
+  // ============================================================================
+  // Sinkronisasi Massal Data Master (Push dari Client -> Server SQLite)
+  // Dipakai oleh src/services/sqlSync.ts untuk sinkronisasi dua arah.
+  // ============================================================================
+  app.post('/api/sync/push', (req: Request, res: Response) => {
+    const { classes, subjects, students, users, pairings, settings } = req.body || {};
+    try {
+      if (Array.isArray(classes)) for (const c of classes) Repo.classes.upsert(c);
+      if (Array.isArray(subjects)) for (const s of subjects) Repo.subjects.upsert(s);
+      if (Array.isArray(students)) for (const s of students) Repo.students.upsert(s);
+      if (Array.isArray(users)) for (const u of users) Repo.users.upsert(u);
+      if (Array.isArray(pairings)) Repo.pairings.replaceAll(pairings);
+      if (settings) Repo.settings.update(settings);
+      return res.json({ success: true, message: 'Sinkronisasi data master ke server berhasil.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Gagal menyimpan data ke server.' });
+    }
+  });
+
+  // Snapshot lengkap untuk hidrasi awal device baru (Pull dari Server -> Client)
+  app.get('/api/sync/pull', (req: Request, res: Response) => {
+    const safeUsers = Repo.users.all().map(({ password_hash, ...rest }) => rest);
+    return res.json({
+      success: true,
+      data: {
+        classes: Repo.classes.all(),
+        subjects: Repo.subjects.all(),
+        students: Repo.students.all(),
+        users: safeUsers,
+        pairings: Repo.pairings.all(),
+        settings: Repo.settings.get(),
+        attendance: Repo.attendance.query({}),
+        tokens: Repo.tokens.all(),
+        gradeActivities: Repo.gradeActivities.all(),
+        gradeValues: Repo.gradeValues.all(),
+      },
+    });
+  });
+
   app.get('/api/grades', (req: Request, res: Response) => {
     const { class_id, subject_id } = req.query;
     let activities = Repo.gradeActivities.all();
