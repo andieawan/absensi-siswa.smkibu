@@ -208,6 +208,29 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
       notes: studentStatuses[s.id]?.notes,
     }));
 
+    // Submit ke server lebih dulu: server memvalidasi token, tanggal, status, dan
+    // keanggotaan siswa. Kalau server menolak, jangan tampilkan "berhasil".
+    try {
+      const res = await fetch('/api/delegation/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: tokenObj.token,
+          class_id: targetClass.id,
+          tanggal: selectedDate,
+          entries,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.error || `Presensi ditolak server (status ${res.status}).`);
+        setIsSubmitting(false);
+        return;
+      }
+    } catch (err) {
+      console.warn('[DelegatedStudentView] Server submit notice:', err);
+    }
+
     // Simpan ke storage lokal
     try {
       storage.submitAttendanceBatch({
@@ -220,22 +243,6 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
       });
     } catch (err) {
       console.warn('[DelegatedStudentView] Local storage submit:', err);
-    }
-
-    // Submit ke server endpoint
-    try {
-      await fetch('/api/delegation/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: tokenObj.token,
-          class_id: targetClass.id,
-          tanggal: selectedDate,
-          entries,
-        }),
-      });
-    } catch (err) {
-      console.warn('[DelegatedStudentView] Server submit notice:', err);
     }
 
     setIsSubmitting(false);

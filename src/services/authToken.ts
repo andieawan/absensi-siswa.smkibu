@@ -38,3 +38,22 @@ export function authHeaders(extra?: Record<string, string>): Record<string, stri
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
+
+/**
+ * fetch() ke endpoint server dengan header Authorization. Untuk body JSON,
+ * gunakan `json` agar Content-Type terisi otomatis.
+ */
+export function apiFetch(
+  url: string,
+  init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}
+): Promise<Response> {
+  const { method, json, headers } = init;
+  return fetch(url, {
+    method: method || (json !== undefined ? 'POST' : 'GET'),
+    headers: authHeaders({
+      ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(headers || {}),
+    }),
+    body: json !== undefined ? JSON.stringify(json) : undefined,
+  });
+}
