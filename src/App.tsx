@@ -18,6 +18,7 @@ import { Student360View } from './components/Student360View';
 import { AdminPanelView } from './components/AdminPanelView';
 import { BkView } from './components/BkView';
 import { DelegatedStudentView } from './components/DelegatedStudentView';
+import { ParentPortalView } from './components/ParentPortalView';
 import {
   testFirestoreConnection,
   syncStorageToFirestore,
@@ -46,6 +47,7 @@ export default function App() {
 
   // Delegated mode (Ketua Kelas token)
   const [delegatedToken, setDelegatedToken] = useState<string | null>(null);
+  const [parentAccessToken, setParentAccessToken] = useState<string | null>(null);
 
   // Switching user modal state
   const [pendingSwitchUserId, setPendingSwitchUserId] = useState<number | null>(null);
@@ -117,12 +119,18 @@ export default function App() {
     });
   }, []);
 
-  // Check URL query parameters for token (e.g., ?token=...)
+  // Check URL query parameters for token (e.g., ?token=... untuk delegasi Ketua
+  // Kelas, ?wali=... untuk portal Orang Tua/Wali Murid — dua jalur publik yang
+  // terpisah, tidak saling menimpa kalau keduanya kebetulan ada di URL.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenParam = params.get('token');
     if (tokenParam) {
       setDelegatedToken(tokenParam);
+    }
+    const waliParam = params.get('wali');
+    if (waliParam) {
+      setParentAccessToken(waliParam);
     }
   }, []);
 
@@ -227,6 +235,20 @@ export default function App() {
     );
   }
 
+  // 1b. Portal Orang Tua/Wali Murid (URL link ?wali=...) — publik, baca-saja,
+  // tidak butuh login sama sekali (lihat ParentPortalView & /api/parent-access/summary).
+  if (parentAccessToken) {
+    return (
+      <ParentPortalView
+        token={parentAccessToken}
+        onExit={() => {
+          setParentAccessToken(null);
+          window.history.replaceState({}, '', window.location.pathname);
+        }}
+      />
+    );
+  }
+
   // 2. Authentication Gate: If not authenticated or no user session, render Login Gate View
   if (!isAuthenticated || !currentUser) {
     return (
@@ -301,6 +323,7 @@ export default function App() {
               <Student360View
                 initialStudentId={inspectedStudentId}
                 classes={classes}
+                currentUser={currentUser}
                 onBack={() => setActiveTab('dashboard')}
               />
             )}

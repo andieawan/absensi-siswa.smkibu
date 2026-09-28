@@ -8,6 +8,7 @@ import {
   GradeValue,
   TeacherPairing,
   KetuaKelasToken,
+  ParentAccessToken,
   AuditLogItem,
   SchoolSettings,
   PeriodicPatternAlert,
@@ -706,6 +707,56 @@ class StorageManager {
     }
 
     return newToken;
+  }
+
+  // Akses Orang Tua/Wali Murid (baca-saja, per siswa)
+  // Beda dari token delegasi Ketua Kelas: tidak disinkronkan ke localStorage
+  // atau Firestore sama sekali. Server adalah satu-satunya sumber data —
+  // guru yang mengelola token ini harus online, dan portal orang tua sendiri
+  // (ParentPortalView) memanggil server langsung tanpa lewat storage.ts.
+
+  async createParentAccessToken(studentId: number): Promise<ParentAccessToken> {
+    let res: Response;
+    try {
+      res = await apiFetch('/api/parent-access/create', { json: { student_id: studentId } });
+    } catch {
+      throw new Error('Server tidak dapat dihubungi. Akses wali murid hanya bisa dibuat saat online.');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success || !data.token) {
+      throw new Error(data?.error || `Gagal membuat akses wali murid (status ${res.status}).`);
+    }
+    this.addAuditLog('Buat Akses Wali Murid', 'Siswa', `Siswa #${studentId}`, 'Tautan akses baca-saja untuk orang tua dibuat');
+    return data.token as ParentAccessToken;
+  }
+
+  async listParentAccessTokens(studentId: number): Promise<ParentAccessToken[]> {
+    let res: Response;
+    try {
+      res = await apiFetch(`/api/parent-access/list?student_id=${studentId}`);
+    } catch {
+      throw new Error('Server tidak dapat dihubungi.');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Gagal memuat daftar akses wali murid (status ${res.status}).`);
+    }
+    return (data.data as ParentAccessToken[]) || [];
+  }
+
+  async revokeParentAccessToken(token: string): Promise<boolean> {
+    let res: Response;
+    try {
+      res = await apiFetch('/api/parent-access/revoke', { json: { token } });
+    } catch {
+      throw new Error('Server tidak dapat dihubungi.');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Gagal mencabut akses wali murid (status ${res.status}).`);
+    }
+    this.addAuditLog('Cabut Akses Wali Murid', 'Siswa', 'Tautan Akses', `Token dicabut: ${token.substring(0, 12)}...`);
+    return Boolean(data.revoked);
   }
 
   /**

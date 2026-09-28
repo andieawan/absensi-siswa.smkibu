@@ -38,6 +38,7 @@ import {
   GradeValue,
   KetuaKelasToken,
   SchoolSettings,
+  ParentAccessToken,
 } from '../src/types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -185,6 +186,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   expires_at_millis INTEGER NOT NULL
+);
+
+-- Akses baca-saja untuk Orang Tua/Wali Murid, per SISWA (bukan per kelas
+-- seperti token delegasi Ketua Kelas). Sengaja TIDAK ada masa kedaluwarsa
+-- otomatis — orang tua perlu bisa cek kapan saja, bukan cuma sekali dalam
+-- 24 jam. Wali kelas/Administrator yang mencabut akses lewat kolom status.
+CREATE TABLE IF NOT EXISTS parent_access_tokens (
+  token TEXT PRIMARY KEY,
+  student_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'aktif',
+  created_at TEXT NOT NULL,
+  created_by INTEGER,
+  revoked_at TEXT
 );
 `);
 
@@ -474,6 +488,17 @@ function rowToToken(row: any): KetuaKelasToken {
     created_by: row.created_by,
     expires_at: row.expires_at ?? undefined,
     expires_at_millis: row.expires_at_millis ?? undefined,
+  };
+}
+
+function rowToParentToken(row: any): ParentAccessToken {
+  return {
+    token: row.token,
+    student_id: row.student_id,
+    status: row.status,
+    created_at: row.created_at,
+    created_by: row.created_by,
+    revoked_at: row.revoked_at ?? undefined,
   };
 }
 
@@ -784,6 +809,31 @@ export const Repo = {
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).run(t.token, t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null);
       }
+    },
+  },
+  parentTokens: {
+    byToken(token: string): ParentAccessToken | undefined {
+      const row = db.prepare('SELECT * FROM parent_access_tokens WHERE token = ?').get(token);
+      return row ? rowToParentToken(row) : undefined;
+    },
+    byStudent(studentId: number): ParentAccessToken[] {
+      return (
+        db.prepare('SELECT * FROM parent_access_tokens WHERE student_id = ? ORDER BY created_at DESC').all(studentId) as any[]
+      ).map(rowToParentToken);
+    },
+    create(studentId: number, createdBy: number): ParentAccessToken {
+      const token = `wm_${randomBytes(24).toString('base64url')}`;
+      const nowIso = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO parent_access_tokens (token, student_id, status, created_at, created_by) VALUES (?, ?, 'aktif', ?, ?)`
+      ).run(token, studentId, nowIso, createdBy);
+      return { token, student_id: studentId, status: 'aktif', created_at: nowIso, created_by: createdBy };
+    },
+    revoke(token: string): boolean {
+      const info = db
+        .prepare(`UPDATE parent_access_tokens SET status = 'nonaktif', revoked_at = ? WHERE token = ? AND status = 'aktif'`)
+        .run(new Date().toISOString(), token);
+      return Number(info.changes || 0) > 0;
     },
   },
   sessions: {

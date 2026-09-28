@@ -88,6 +88,15 @@ export interface KetuaKelasToken {
   expires_at_millis?: number; // Epoch timestamp ms untuk validasi Firestore Rules & waktu server
 }
 
+export interface ParentAccessToken {
+  token: string;
+  student_id: number;
+  status: 'aktif' | 'nonaktif';
+  created_at: string;
+  created_by: number;
+  revoked_at?: string;
+}
+
 export interface AuditLogItem {
   id: number;
   username: string;

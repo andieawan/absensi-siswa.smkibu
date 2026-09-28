@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Student, ClassItem } from '../types';
+import { Student, ClassItem, User } from '../types';
 import { storage } from '../services/storage';
 import { GoogleDocsModal } from './GoogleDocsModal';
+import { ParentAccessModal } from './ParentAccessModal';
 import {
   Search,
   UserCheck,
@@ -16,17 +17,20 @@ import {
   XCircle,
   AlertOctagon,
   Loader2,
+  Users,
 } from 'lucide-react';
 
 interface Student360ViewProps {
   initialStudentId?: number | null;
   classes: ClassItem[];
+  currentUser: User;
   onBack?: () => void;
 }
 
 export const Student360View: React.FC<Student360ViewProps> = ({
   initialStudentId,
   classes,
+  currentUser,
   onBack,
 }) => {
   const allStudents = storage.getStudents();
@@ -36,6 +40,7 @@ export const Student360View: React.FC<Student360ViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [classFilter, setClassFilter] = useState<number>(0);
   const [showGoogleDocsModal, setShowGoogleDocsModal] = useState<boolean>(false);
+  const [showParentAccessModal, setShowParentAccessModal] = useState<boolean>(false);
 
   // Server business rules clearance state
   const [clearanceLoading, setClearanceLoading] = useState<boolean>(false);
@@ -79,6 +84,14 @@ export const Student360View: React.FC<Student360ViewProps> = ({
   // Selected student
   const student = allStudents.find((s) => s.id === selectedStudentId);
   const studentClass = classes.find((c) => c.id === student?.class_id);
+
+  // Kelola akses portal orang tua: khusus Wali Kelas dari kelas siswa ini,
+  // atau Administrator/Superadmin (sama persis dengan aturan otorisasi di
+  // server untuk POST /api/parent-access/create).
+  const isAdminUser = currentUser.roles.includes('admin') || currentUser.roles.includes('superadmin');
+  const canManageParentAccess = Boolean(
+    student && (isAdminUser || currentUser.kelas_wali_id === student.class_id)
+  );
 
   // Student Attendance Dossier
   const studentAttendance = useMemo(() => {
@@ -263,17 +276,28 @@ export const Student360View: React.FC<Student360ViewProps> = ({
           </div>
 
           {/* Action Row */}
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs text-slate-500">
               Dokumentasi Resmi & Surat Administrasi Siswa
             </span>
-            <button
-              onClick={() => setShowGoogleDocsModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shadow-xs"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Buat Surat Resmi (Google Docs)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {canManageParentAccess && (
+                <button
+                  onClick={() => setShowParentAccessModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors shadow-xs"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Akses Orang Tua/Wali Murid</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowGoogleDocsModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shadow-xs"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Buat Surat Resmi (Google Docs)</span>
+              </button>
+            </div>
           </div>
 
           {/* Periodic Pattern Warning if detected */}
@@ -517,6 +541,13 @@ export const Student360View: React.FC<Student360ViewProps> = ({
           defaultMode="warning_letter"
         />
       )}
+
+      {/* Akses Portal Orang Tua/Wali Murid */}
+      <ParentAccessModal
+        isOpen={showParentAccessModal}
+        student={student || null}
+        onClose={() => setShowParentAccessModal(false)}
+      />
     </div>
   );
 };

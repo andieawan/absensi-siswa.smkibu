@@ -58,6 +58,90 @@ function calculateStudentAttendanceStats(studentId: number) {
 }
 
 /**
+ * Aturan Bisnis 1b: Kategori "Perlu Perhatian" untuk SATU siswa (versi server
+ * dari storage.ts getAttentionStudents() di client, dipakai portal orang tua
+ * & endpoint akses wali murid — ambang batasnya sengaja disamakan persis
+ * dengan logika client supaya tidak ada dua definisi "perlu perhatian" yang
+ * berbeda di server vs client).
+ */
+function calculateAttentionCategory(studentId: number): {
+  category: 'alpa_tinggi' | 'sakit_tinggi' | 'izin_tinggi' | 'jarang_masuk_gabungan' | null;
+  alpa: number;
+  izin: number;
+  sakit: number;
+  totalAbsen: number;
+} {
+  const records = Repo.attendance.forStudent(studentId);
+  const alpa = records.filter((a) => a.status === 'A').length;
+  const izin = records.filter((a) => a.status === 'I').length;
+  const sakit = records.filter((a) => a.status === 'S').length;
+  const totalAbsen = alpa + izin + sakit;
+
+  let category: 'alpa_tinggi' | 'sakit_tinggi' | 'izin_tinggi' | 'jarang_masuk_gabungan' | null = null;
+  if (alpa >= 2) category = 'alpa_tinggi';
+  else if (sakit >= 2) category = 'sakit_tinggi';
+  else if (izin >= 2) category = 'izin_tinggi';
+  else if (totalAbsen >= 3) category = 'jarang_masuk_gabungan';
+
+  return { category, alpa, izin, sakit, totalAbsen };
+}
+
+/**
+ * Aturan Bisnis 1c: Deteksi pola absen berkala untuk SATU siswa (versi server
+ * dari storage.ts detectPeriodicPatterns(), dipersempit ke satu siswa saja).
+ * Mencari ketidakhadiran berulang di hari yang sama dengan interval ~14 hari
+ * (toleransi 10-18 hari).
+ */
+function detectPeriodicPatternForStudent(studentId: number): {
+  day_of_week: string;
+  day_index: number;
+  count: number;
+  dates: string[];
+  status_type: 'Peringatan' | 'Pola';
+}[] {
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const records = Repo.attendance.forStudent(studentId).filter((a) => a.status !== 'H');
+
+  const byWeekday = new Map<number, string[]>();
+  for (const record of records) {
+    const dateObj = new Date(record.tanggal + 'T00:00:00');
+    const dayIdx = dateObj.getDay();
+    if (!byWeekday.has(dayIdx)) byWeekday.set(dayIdx, []);
+    byWeekday.get(dayIdx)!.push(record.tanggal);
+  }
+
+  const alerts: { day_of_week: string; day_index: number; count: number; dates: string[]; status_type: 'Peringatan' | 'Pola' }[] = [];
+
+  byWeekday.forEach((dates, dayIdx) => {
+    const sorted = [...dates].sort();
+    if (sorted.length < 2) return;
+
+    const matchedDates: string[] = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const d1 = new Date(sorted[i] + 'T00:00:00').getTime();
+      const d2 = new Date(sorted[i + 1] + 'T00:00:00').getTime();
+      const daysDiff = Math.round((d2 - d1) / (1000 * 3600 * 24));
+      if (daysDiff >= 10 && daysDiff <= 18) {
+        if (!matchedDates.includes(sorted[i])) matchedDates.push(sorted[i]);
+        if (!matchedDates.includes(sorted[i + 1])) matchedDates.push(sorted[i + 1]);
+      }
+    }
+
+    if (matchedDates.length > 0) {
+      alerts.push({
+        day_of_week: dayNames[dayIdx],
+        day_index: dayIdx,
+        count: matchedDates.length,
+        dates: matchedDates,
+        status_type: matchedDates.length >= 3 ? 'Pola' : 'Peringatan',
+      });
+    }
+  });
+
+  return alerts;
+}
+
+/**
  * Aturan Bisnis 2: Otorisasi Guru Mengajar (Teacher Pairing & Wali Kelas)
  */
 function verifyTeacherAuthorization(
@@ -262,6 +346,9 @@ const PUBLIC_API_PATHS = new Set([
   '/delegation/verify',
   '/delegation/session',
   '/delegation/submit',
+  // Portal Orang Tua/Wali Murid: divalidasi dengan token akses per-siswa di
+  // handler-nya sendiri (lihat parent_access_tokens), bukan token sesi guru.
+  '/parent-access/summary',
 ]);
 
 const ALLOWED_SEQUENCE_ENTITIES = new Set(['users', 'students', 'attendance', 'audit_logs', 'classes', 'subjects']);
@@ -974,6 +1061,107 @@ async function startServer() {
     return res.json({
       success: true,
       message: `Presensi kelas #${class_id} tanggal ${tanggal} (${entries?.length || 0} siswa) berhasil diverifikasi dan disimpan via delegasi Ketua Kelas.`,
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 6: PORTAL ORANG TUA/WALI MURID (BACA-SAJA, PER SISWA)
+  // ============================================================================
+  // Penerbitan & pencabutan token akses: WAJIB login (Wali Kelas dari kelas
+  // siswa tsb, atau Administrator) — reuse verifyTeacherAuthorization dengan
+  // subjectId=null, persis aturan yang sudah dipakai untuk absen harian.
+  app.post('/api/parent-access/create', (req: Request, res: Response) => {
+    const actor = getActor(res);
+    const studentId = Number(req.body?.student_id);
+    const student = studentId ? Repo.students.byId(studentId) : undefined;
+    if (!student) {
+      return res.status(400).json({ success: false, error: 'Siswa tujuan akses wali murid tidak valid.' });
+    }
+    const authCheck = verifyTeacherAuthorization(actor.id, null, student.class_id, actor.roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
+    }
+
+    const newToken = Repo.parentTokens.create(studentId, actor.id);
+    recordAudit('Buat Akses Wali Murid', 'Siswa', actor.nama, `Siswa #${studentId} (${student.nama})`);
+
+    return res.json({ success: true, token: newToken });
+  });
+
+  app.get('/api/parent-access/list', (req: Request, res: Response) => {
+    const actor = getActor(res);
+    const studentId = Number(req.query.student_id);
+    const student = studentId ? Repo.students.byId(studentId) : undefined;
+    if (!student) {
+      return res.status(400).json({ success: false, error: 'Parameter student_id tidak valid.' });
+    }
+    const authCheck = verifyTeacherAuthorization(actor.id, null, student.class_id, actor.roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
+    }
+    return res.json({ success: true, data: Repo.parentTokens.byStudent(studentId) });
+  });
+
+  app.post('/api/parent-access/revoke', (req: Request, res: Response) => {
+    const actor = getActor(res);
+    const token = String(req.body?.token || '');
+    const found = token ? Repo.parentTokens.byToken(token) : undefined;
+    if (!found) {
+      return res.status(404).json({ success: false, error: 'Token akses wali murid tidak ditemukan.' });
+    }
+    const student = Repo.students.byId(found.student_id);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Data siswa untuk token ini tidak ditemukan.' });
+    }
+    const authCheck = verifyTeacherAuthorization(actor.id, null, student.class_id, actor.roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
+    }
+    const revoked = Repo.parentTokens.revoke(token);
+    if (revoked) {
+      recordAudit('Cabut Akses Wali Murid', 'Siswa', actor.nama, `Siswa #${found.student_id} (${student.nama})`);
+    }
+    return res.json({ success: true, revoked });
+  });
+
+  // Endpoint publik (lihat PUBLIC_API_PATHS) — divalidasi dengan token akses
+  // wali murid itu sendiri, BUKAN token sesi guru. Baca-saja: rekap kehadiran
+  // + peringatan pola absen/perlu perhatian untuk satu siswa. TIDAK pernah
+  // mengembalikan nilai akademik atau data siswa lain.
+  app.get('/api/parent-access/summary', (req: Request, res: Response) => {
+    const tokenStr = String(req.query.token || '');
+    if (!tokenStr) {
+      return res.status(400).json({ valid: false, error: 'Parameter token wajib diisi.' });
+    }
+    const found = Repo.parentTokens.byToken(tokenStr);
+    if (!found) {
+      return res.status(404).json({ valid: false, error: 'Tautan akses wali murid tidak ditemukan di sistem sekolah.' });
+    }
+    if (found.status !== 'aktif') {
+      return res.status(403).json({ valid: false, error: 'Tautan akses ini sudah dicabut oleh wali kelas/Administrator.' });
+    }
+    const student = Repo.students.byId(found.student_id);
+    if (!student) {
+      return res.status(404).json({ valid: false, error: 'Data siswa untuk tautan ini tidak ditemukan.' });
+    }
+    const studentClass = Repo.classes.byId(student.class_id);
+
+    const stats = calculateStudentAttendanceStats(student.id);
+    const attention = calculateAttentionCategory(student.id);
+    const patternAlerts = detectPeriodicPatternForStudent(student.id);
+    const recentAttendance = Repo.attendance
+      .forStudent(student.id)
+      .sort((a, b) => b.tanggal.localeCompare(a.tanggal))
+      .slice(0, 30)
+      .map((a) => ({ tanggal: a.tanggal, status: a.status, notes: a.notes }));
+
+    return res.json({
+      valid: true,
+      student: { nama: student.nama, nis: student.nis, class_name: studentClass?.name || '-' },
+      stats,
+      attention,
+      patternAlerts,
+      recentAttendance,
     });
   });
 
