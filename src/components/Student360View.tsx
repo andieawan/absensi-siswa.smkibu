@@ -11,6 +11,11 @@ import {
   Clock,
   ArrowLeft,
   FileText,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  AlertOctagon,
+  Loader2,
 } from 'lucide-react';
 
 interface Student360ViewProps {
@@ -31,6 +36,33 @@ export const Student360View: React.FC<Student360ViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [classFilter, setClassFilter] = useState<number>(0);
   const [showGoogleDocsModal, setShowGoogleDocsModal] = useState<boolean>(false);
+
+  // Server business rules clearance state
+  const [clearanceLoading, setClearanceLoading] = useState<boolean>(false);
+  const [clearanceResult, setClearanceResult] = useState<any>(null);
+  const [adminOverrideEnabled, setAdminOverrideEnabled] = useState<boolean>(false);
+
+  // Reset clearance result on student switch
+  React.useEffect(() => {
+    setClearanceResult(null);
+  }, [selectedStudentId]);
+
+  const handleTestServerClearance = async () => {
+    if (!student) return;
+    setClearanceLoading(true);
+    setClearanceResult(null);
+    try {
+      const res = await storage.requestAcademicClearanceServer(student.id, {
+        admin_override: adminOverrideEnabled,
+        override_reason: adminOverrideEnabled ? 'Dispensasi Khusus Medis / Kepala Sekolah' : undefined,
+      });
+      setClearanceResult(res);
+    } catch (err: any) {
+      setClearanceResult({ success: false, clearance_granted: false, error: err.message });
+    } finally {
+      setClearanceLoading(false);
+    }
+  };
 
   // Filter students for search dropdown
   const filteredStudents = useMemo(() => {
@@ -251,6 +283,106 @@ export const Student360View: React.FC<Student360ViewProps> = ({
               <div>
                 <strong>Peringatan Pola Berkala:</strong> Siswa ini terdeteksi memiliki kebiasaan absen pada hari{' '}
                 <strong>{patternAlerts[0].day_of_week}</strong> ({patternAlerts[0].count}x kejadian dengan interval ~14 hari). Perlu perhatian dan konfirmasi wali kelas/BK.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lapisan Validasi Server: Aturan Bisnis 85% & Pengesahan Akademik */}
+      {student && (
+        <div className="bg-white border border-slate-200 rounded-lg p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                  <span>Validasi Aturan Bisnis Server (Batas Minimal 85%)</span>
+                  {attendanceRate >= 85 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      <CheckCircle2 className="w-3 h-3" /> Memenuhi Syarat (≥ 85%)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full">
+                      <AlertOctagon className="w-3 h-3" /> Pelanggaran Syarat (&lt; 85%)
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ditegakkan oleh backend endpoint <code>/api/students/academic-clearance</code>. Menolak pengesahan kelulusan dan kenaikan kelas jika kehadiran di bawah 85%.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg">
+                <input
+                  type="checkbox"
+                  checked={adminOverrideEnabled}
+                  onChange={(e) => setAdminOverrideEnabled(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                />
+                <span>Override Admin</span>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleTestServerClearance}
+                disabled={clearanceLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-xs"
+              >
+                {clearanceLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memverifikasi Server...</span>
+                  </>
+                ) : (
+                  <>
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>Uji Pengesahan Server</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback Hasil Validasi Server */}
+          {clearanceResult && (
+            <div
+              className={`mt-4 p-3.5 rounded-lg border text-xs ${
+                clearanceResult.clearance_granted
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {clearanceResult.clearance_granted ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <div className="font-semibold text-slate-900">
+                    {clearanceResult.clearance_granted
+                      ? 'Pengesahan Akademik Disetujui Server'
+                      : 'Pengesahan Akademik Ditolak Server (Aturan 85% Ditegakkan)'}
+                  </div>
+                  <div className="text-slate-700">
+                    {clearanceResult.message || clearanceResult.error}
+                  </div>
+                  {clearanceResult.clearance_code && (
+                    <div className="font-mono text-[11px] text-emerald-800 bg-white/70 px-2 py-1 rounded inline-block">
+                      Kode Sertifikasi Server: {clearanceResult.clearance_code}
+                    </div>
+                  )}
+                  {clearanceResult.details && (
+                    <div className="text-[11px] text-rose-700 mt-1">
+                      <span>Defisit Kehadiran: {clearanceResult.details.deficit_sessions} sesi lagi untuk mencapai batas 85%.</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

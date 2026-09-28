@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { User, Student, ClassItem, Subject, TeacherPairing, AuditLogItem, Role } from '../types';
 import { storage } from '../services/storage';
+import { authService } from '../services/auth';
 import { generateHardcopyTemplate, parseHardcopyUpload, HardcopyPreviewResult } from '../utils/excel';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
 import {
@@ -61,9 +62,11 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const handleCreateTeacher = (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const pHash = authService.hashPassword(newTeacherPassword.trim() || 'guru123');
       storage.addUser({
         nama: newTeacherName.trim(),
         username: newTeacherUsername.trim().toLowerCase(),
+        password_hash: pHash,
         is_active: true,
         roles: newTeacherRoles,
         kelas_wali_id: newTeacherWaliClass,
@@ -80,12 +83,15 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 
   const handleResetPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resettingUser) return;
+    if (!resettingUser || !newPasswordVal.trim()) return;
+    const pHash = authService.hashPassword(newPasswordVal.trim());
+    storage.updateUserPassword(resettingUser.id, pHash);
     // Password reset is deliberately sanitized in audit log (PRD 9.2)
     storage.addAuditLog('Reset Password Guru', 'Akun Guru', resettingUser.nama, `Reset password dilakukan oleh ${currentUser.username}`);
     setResettingUser(null);
     setNewPasswordVal('');
     setFeedback({ type: 'success', text: `Password untuk ${resettingUser.nama} berhasil direset (disimpan dengan hash aman).` });
+    onRefreshData?.();
   };
 
   const handleToggleUserActive = (user: User) => {
@@ -314,27 +320,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   };
 
   const handleDownloadJsonBackup = () => {
-    const data = {
-      users: storage.getUsers(),
-      classes: storage.getClasses(),
-      subjects: storage.getSubjects(),
-      students: storage.getStudents(),
-      pairings: storage.getPairings(),
-      settings: storage.getSettings(),
-      attendance: storage.getAttendance(),
-      gradeActivities: storage.getGradeActivities(),
-      gradeValues: storage.getGradeValues(),
-      tokens: storage.getDelegationTokens(),
-      logs: storage.getAuditLogs(),
-      timestamp: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup_full_json_${new Date().toISOString().substring(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const data = storage.getBackupSnapshot();
+    storage.triggerAutomaticJsonBackupDownload(data, 'backup_full_json');
     storage.addAuditLog('Backup JSON', 'Backup', 'Full Export', 'Pengunduhan arsip terstruktur JSON');
   };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, ClassItem, Subject, Student, AttendanceStatus } from '../types';
+import { User, ClassItem, Subject, Student, AttendanceStatus, KetuaKelasToken } from '../types';
 import { storage } from '../services/storage';
 import { exportAttendanceMatrixToExcel } from '../utils/excel';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
@@ -15,6 +15,7 @@ import {
   History,
   Lock,
   FileSpreadsheet,
+  Clock,
 } from 'lucide-react';
 
 interface AttendanceViewProps {
@@ -59,6 +60,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   const [showDelegationModal, setShowDelegationModal] = useState<boolean>(false);
   const [showGoogleSheetsModal, setShowGoogleSheetsModal] = useState<boolean>(false);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [generatedTokenObj, setGeneratedTokenObj] = useState<KetuaKelasToken | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Get active students for selected class (only 'aktif' students, sorted alphabetically)
@@ -239,10 +241,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     });
   };
 
-  // Generate Ketua Kelas Delegation Token (PRD 6.2)
+  // Generate Ketua Kelas Delegation Token (PRD 6.2 & Cross-Device Firestore Sync)
   const handleGenerateDelegation = () => {
-    const tokenObj = storage.createDelegationToken(selectedClassId, currentUser.id);
+    // Buat token dengan masa berlaku 24 jam (tersimpan ke Firestore secara otomatis)
+    const tokenObj = storage.createDelegationToken(selectedClassId, currentUser.id, 24);
     setGeneratedToken(tokenObj.token);
+    setGeneratedTokenObj(tokenObj);
     setShowDelegationModal(true);
     setCopiedLink(false);
   };
@@ -706,11 +710,23 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Wali kelas dapat memberikan tautan ini kepada Ketua Kelas agar dapat menginput absen harian mandiri tanpa harus memiliki akun guru.
+              Wali kelas dapat memberikan tautan ini kepada Ketua Kelas agar dapat menginput absen harian mandiri tanpa harus memiliki akun guru. Tautan disinkronkan ke Cloud Firestore sehingga dapat langsung dibuka di perangkat murid manapun.
             </p>
 
+            {generatedTokenObj?.expires_at && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-900">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-semibold">Masa Berlaku Token: 24 Jam</span>
+                  <p className="text-[11px] text-amber-800 leading-snug">
+                    Tautan aktif hingga <strong>{new Date(generatedTokenObj.expires_at).toLocaleString('id-ID')}</strong>. Setelah itu tautan akan otomatis dikunci demi keamanan.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="text-[11px] text-slate-500 mb-1">Token Akses Aman:</div>
+              <div className="text-[11px] text-slate-500 mb-1">Token Akses Aman (Cloud Firestore):</div>
               <div className="font-mono text-xs text-slate-900 break-all select-all font-semibold">
                 {generatedToken}
               </div>

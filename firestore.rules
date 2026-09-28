@@ -3,86 +3,191 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Global default-deny safety net
+    // 1. Global Default-Deny Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
+
+    // --- Helper Functions ---
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function incoming() {
+      return request.resource.data;
     }
 
-    // Users collection
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'andiawan69@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isTeacher() {
+      return isSignedIn();
+    }
+
+    // Mengonversi string tanggal 'YYYY-MM-DD' ke Timestamp Firestore
+    function parseDateString(dateStr) {
+      return timestamp.date(
+        int(dateStr[0:4]),
+        int(dateStr[5:7]),
+        int(dateStr[8:10])
+      );
+    }
+
+    // Validasi aturan hapus absensi maksimal 7 hari (PRD 6.2 & Server-side enforcement)
+    function isAttendanceWithin7Days(data) {
+      return (
+        // Kasus 1: Field created_at berupa Timestamp Firestore
+        ('created_at' in data && data.created_at is timestamp &&
+          request.time - data.created_at <= duration.value(7, 'd')) ||
+        // Kasus 2: Field created_at_millis berupa integer epoch milliseconds
+        ('created_at_millis' in data && data.created_at_millis is int &&
+          request.time.toMillis() - data.created_at_millis <= 7 * 24 * 60 * 60 * 1000) ||
+        // Kasus 3: Field tanggal bertipe string 'YYYY-MM-DD'
+        ('tanggal' in data && data.tanggal is string && data.tanggal.size() == 10 &&
+          request.time - parseDateString(data.tanggal) <= duration.value(8, 'd'))
+      );
+    }
+
+    // Validasi otorisasi guru (isTeacherAllowed) pada tingkat Firestore Rules
+    function isTeacherAuthorizedForAttendance(data) {
+      let teacherId = string(data.recorded_by);
+      let classId = data.class_id;
+      let subjectId = data.subject_id;
+      let isGuru = ('recorded_via' in data && data.recorded_via == 'guru');
+
+      // Absen Harian (subject_id == null): hanya Wali Kelas atau Admin
+      let isWaliAllowed = (subjectId == null) && (
+        exists(/databases/$(database)/documents/users/$(teacherId)) &&
+        get(/databases/$(database)/documents/users/$(teacherId)).data.kelas_wali_id == classId
+      );
+
+      // Absen Mapel: verifikasi pasangan mapel-kelas (pairings) atau fallback user.classes
+      let pairingKey = teacherId + '_' + string(subjectId) + '_' + string(classId);
+      let hasPairing = exists(/databases/$(database)/documents/pairings/$(pairingKey));
+      let teachesClass = (
+        exists(/databases/$(database)/documents/users/$(teacherId)) &&
+        'classes' in get(/databases/$(database)/documents/users/$(teacherId)).data &&
+        classId in get(/databases/$(database)/documents/users/$(teacherId)).data.classes
+      );
+
+      return isAdmin() || (!isGuru) || isWaliAllowed || hasPairing || teachesClass;
+    }
+
+    // --- Koleksi Database & Aturan Akses ---
+
+    // 1. Koleksi: users
     match /users/{userId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['nama', 'foto_profil_url'])
+      );
     }
 
-    // Students collection
+    // 2. Koleksi: students
     match /students/{studentId} {
-      allow read: if true;
-      allow create, update: if true;
-      // Permanent deletion of students is prohibited to maintain historical integrity
-      allow delete: if false;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if false; // Soft delete only
     }
 
-    // Classes collection
-    match /classes/{classId} {
-      allow read: if true;
-      allow write: if true;
-    }
-
-    // Subjects collection
-    match /subjects/{subjectId} {
-      allow read: if true;
-      allow write: if true;
-    }
-
-    // Attendance collection
+    // 3. Koleksi: attendance (Ditegakkan isTeacherAllowed & Aturan Hapus/Ubah 7 Hari)
     match /attendance/{attendanceId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      // Baca: Guru & staf terotentikasi. Siswa dilarang membaca langsung dari client SDK.
+      allow read: if isSignedIn();
+
+      // Buat: Wajib lolos verifikasi isTeacherAuthorizedForAttendance & status sah (H/I/S/A)
+      allow create: if isSignedIn() &&
+        isTeacherAuthorizedForAttendance(incoming()) &&
+        (incoming().status in ['H', 'I', 'S', 'A']);
+
+      // Update: Wajib lolos otorisasi, status sah, dan tidak boleh mengubah record > 7 hari kecuali Admin
+      allow update: if isSignedIn() &&
+        isTeacherAuthorizedForAttendance(incoming()) &&
+        (incoming().status in ['H', 'I', 'S', 'A']) &&
+        (isAdmin() || isAttendanceWithin7Days(existing()));
+
+      // Hapus: Dibatasi maksimal 7 hari dari tanggal absensi / created_at (atau Admin darurat)
+      allow delete: if isAdmin() || (
+        isSignedIn() && isAttendanceWithin7Days(existing())
+      );
     }
 
-    // Grade activities & Grade values
+    // 4. Koleksi: grade_activities
     match /grade_activities/{activityId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
+    // 5. Koleksi: grade_values
     match /grade_values/{valueId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
-    // Teacher subject class pairings
+    // 6. Koleksi: pairings (Master Penugasan Guru Mapel - Kelas)
     match /pairings/{pairingId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
-    // Delegation tokens
+    // 7. Koleksi: tokens (Delegasi Ketua Kelas Lintas-Device dengan Validasi Expiry)
     match /tokens/{tokenId} {
-      allow read: if true;
-      allow write: if true;
+      // Guru & Admin dapat mengelola dan menerbitkan token
+      allow write: if isSignedIn();
+
+      // Baca Lintas-Device:
+      // 1. Guru & Admin terotentikasi dapat membaca semua token
+      // 2. Murid / Ketua Kelas di device lain (unauthenticated) dapat membaca token miliknya
+      //    asalkan status dokumen 'aktif' dan masa berlaku belum kedaluwarsa
+      allow read: if isSignedIn() || (
+        resource.data.status == 'aktif' && (
+          !('expires_at_millis' in resource.data) ||
+          request.time.toMillis() < resource.data.expires_at_millis
+        )
+      );
     }
 
-    // Audit logs
+    // 8. Koleksi: settings
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // 9. Koleksi: classes & subjects
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // 10. Koleksi: audit_logs (Append-only)
     match /audit_logs/{logId} {
-      allow read: if true;
-      allow create: if true;
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
       allow update, delete: if false;
     }
 
-    // School settings
-    match /settings/{settingId} {
+    // 11. Endpoint Probe Koneksi
+    match /test/{testId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if false;
     }
   }
 }

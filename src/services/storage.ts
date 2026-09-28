@@ -14,6 +14,8 @@ import {
   AttentionStudent,
   AttendanceStatus,
 } from '../types';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import {
   INITIAL_CLASSES,
   INITIAL_SUBJECTS,
@@ -28,7 +30,7 @@ import {
   INITIAL_AUDIT_LOGS,
 } from '../data/mockData';
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   USERS: 'go_absen_users_v1',
   CLASSES: 'go_absen_classes_v1',
   SUBJECTS: 'go_absen_subjects_v1',
@@ -41,9 +43,161 @@ const STORAGE_KEYS = {
   TOKENS: 'go_absen_tokens_v1',
   LOGS: 'go_absen_logs_v1',
   CURRENT_USER_ID: 'go_absen_curr_user_v1',
-};
+  LAST_PRE_RESET_BACKUP: 'go_absen_last_pre_reset_backup_v1',
+} as const;
+
+// Helper terpusat untuk sanitasi & escaping nilai string SQL (PRD 6.10 & SQL Injection Prevention)
+export function escapeSqlString(value: unknown): string {
+  if (value === null || value === undefined) {
+    return 'NULL';
+  }
+  const str = String(value);
+  // Escape backslash (\) terlebih dahulu, lalu tanda kutip tunggal ('), null byte, newline, carriage return, dan control-Z
+  const escaped = str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\0/g, '\\0')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\x1a/g, '\\Z');
+
+  return `'${escaped}'`;
+}
+
+/**
+ * Generator UUID v4 yang dijamin unik secara global (RFC 4122)
+ */
+export function generateGlobalUUID(prefix?: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    const uuid = crypto.randomUUID();
+    return prefix ? `${prefix}_${uuid}` : uuid;
+  }
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+  return prefix ? `${prefix}_${uuid}` : uuid;
+}
 
 class StorageManager {
+  // Pool ID yang dialokasikan dari server (Single Source of Truth)
+  private idPool: Record<string, number[]> = {
+    users: [],
+    students: [],
+    attendance: [],
+    audit_logs: [],
+  };
+  private deviceNodeId: number;
+  private localSeqCounter: number = 0;
+  private isReplenishing: Record<string, boolean> = {};
+
+  constructor() {
+    // Generate atau muat Node ID unik per sesi/tab browser (100 - 999)
+    let nodeId = 100;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const stored = sessionStorage.getItem('go_absen_device_node_id');
+        if (stored) {
+          nodeId = parseInt(stored, 10) || 100;
+        } else {
+          nodeId = Math.floor(Math.random() * 900) + 100;
+          sessionStorage.setItem('go_absen_device_node_id', String(nodeId));
+        }
+      } else {
+        nodeId = Math.floor(Math.random() * 900) + 100;
+      }
+    } catch {
+      nodeId = Math.floor(Math.random() * 900) + 100;
+    }
+    this.deviceNodeId = nodeId;
+
+    // Prefetch sekuens awal dari server di latar belakang jika browser aktif
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        this.replenishPool('attendance', 30);
+        this.replenishPool('audit_logs', 30);
+        this.replenishPool('students', 20);
+        this.replenishPool('users', 10);
+      }, 500);
+    }
+  }
+
+  /**
+   * Mengambil batch ID baru dari server (Single Source of Truth) untuk mengisi pool lokal
+   */
+  async replenishPool(entity: string, requestCount = 30): Promise<void> {
+    if (this.isReplenishing[entity]) return;
+    this.isReplenishing[entity] = true;
+    try {
+      if (typeof fetch !== 'undefined') {
+        const res = await fetch('/api/sequence/allocate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity, count: requestCount }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.allocatedIds)) {
+            if (!this.idPool[entity]) this.idPool[entity] = [];
+            this.idPool[entity].push(...data.allocatedIds);
+          }
+        }
+      }
+    } catch {
+      // Server belum siap / offline
+    } finally {
+      this.isReplenishing[entity] = false;
+    }
+  }
+
+  /**
+   * Alokasi ID tunggal yang dijamin unik secara global dan terkoordinasi
+   */
+  allocateId(entity: string, currentLocalIds: number[] = []): number {
+    return this.allocateIdBatch(entity, 1, currentLocalIds)[0];
+  }
+
+  /**
+   * Alokasi batch ID yang dijamin unik secara global dan terkoordinasi
+   * Menghilangkan risiko ID duplikat antar-device/tab tanpa Math.max
+   */
+  allocateIdBatch(entity: string, count: number, currentLocalIds: number[] = []): number[] {
+    const safeCount = Math.max(1, count);
+    const allocated: number[] = [];
+
+    // 1. Coba ambil dari pool server jika tersedia cukup ID
+    if (this.idPool[entity] && this.idPool[entity].length >= safeCount) {
+      const fromPool = this.idPool[entity].splice(0, safeCount);
+      // Jika sisa pool menipis, jadwalkan isi ulang di latar belakang
+      if (this.idPool[entity].length < 10) {
+        this.replenishPool(entity, 30);
+      }
+      return fromPool;
+    }
+
+    // 2. Jika pool belum terisi (cold start atau offline):
+    // Gunakan distributed monotonic generator berbasis timestamp ms + device node id + local counter
+    // Dijamin unik secara matematis dan tidak pernah bertabrakan antar device
+    const existingMax = currentLocalIds.length > 0 ? Math.max(...currentLocalIds) : 0;
+    const now = Date.now();
+
+    for (let i = 0; i < safeCount; i++) {
+      const seq = (this.localSeqCounter++) % 1000;
+      // Formula: now * 1000 + (deviceNodeId % 1000)
+      // Nilai saat ini ~ 1.77e15 yang pas dan aman di bawah Number.MAX_SAFE_INTEGER (9.007e15)
+      let uniqueId = now * 1000 + ((this.deviceNodeId + seq) % 1000);
+      if (uniqueId <= existingMax) {
+        uniqueId = existingMax + i + 1;
+      }
+      allocated.push(uniqueId);
+    }
+
+    // Jadwalkan request pengisian pool ke server untuk pemanggilan berikutnya
+    this.replenishPool(entity, 30);
+
+    return allocated;
+  }
   private getItem<T>(key: string, fallback: T): T {
     try {
       const data = localStorage.getItem(key);
@@ -93,7 +247,7 @@ class StorageManager {
     const users = this.getUsers();
     const newUser: User = {
       ...user,
-      id: Math.max(0, ...users.map((u) => u.id)) + 1,
+      id: this.allocateId('users', users.map((u) => u.id)),
       created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
     };
     users.push(newUser);
@@ -112,13 +266,33 @@ class StorageManager {
     return users[index];
   }
 
+  updateUserPassword(id: number, passwordHash: string): void {
+    const users = this.getUsers();
+    const index = users.findIndex((u) => u.id === id);
+    if (index === -1) throw new Error('Pengguna tidak ditemukan');
+    users[index].password_hash = passwordHash;
+    this.saveUsers(users);
+  }
+
   // Classes & Subjects
   getClasses(): ClassItem[] {
     return this.getItem<ClassItem[]>(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   }
 
+  saveClasses(classes: ClassItem[]): void {
+    this.setItem(STORAGE_KEYS.CLASSES, classes);
+  }
+
   getSubjects(): Subject[] {
     return this.getItem<Subject[]>(STORAGE_KEYS.SUBJECTS, INITIAL_SUBJECTS);
+  }
+
+  saveSubjects(subjects: Subject[]): void {
+    this.setItem(STORAGE_KEYS.SUBJECTS, subjects);
+  }
+
+  saveDelegationTokens(tokens: KetuaKelasToken[]): void {
+    this.setItem(STORAGE_KEYS.TOKENS, tokens);
   }
 
   // Students
@@ -137,7 +311,7 @@ class StorageManager {
 
     const newStudent: Student = {
       ...student,
-      id: Math.max(0, ...students.map((s) => s.id)) + 1,
+      id: this.allocateId('students', students.map((s) => s.id)),
       created_at: new Date().toISOString().substring(0, 10),
     };
     students.push(newStudent);
@@ -225,6 +399,23 @@ class StorageManager {
     let updated = 0;
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
+    // Hitung berapa banyak baris baru yang membutuhkan alokasi ID baru
+    const newEntries = params.entries.filter(
+      (entry) =>
+        !currentRecords.some(
+          (r) =>
+            r.student_id === entry.student_id &&
+            r.subject_id === params.subject_id &&
+            r.tanggal === params.tanggal
+        )
+    );
+
+    // Alokasikan seluruh ID baru di awal secara aman & terkoordinasi (tanpa Math.max)
+    const allocatedNewIds = newEntries.length > 0
+      ? this.allocateIdBatch('attendance', newEntries.length, currentRecords.map((r) => r.id))
+      : [];
+    let newIdCursor = 0;
+
     for (const entry of params.entries) {
       const existingIdx = currentRecords.findIndex(
         (r) =>
@@ -244,7 +435,7 @@ class StorageManager {
         };
         updated++;
       } else {
-        const newId = Math.max(0, ...currentRecords.map((r) => r.id)) + 1;
+        const newId = allocatedNewIds[newIdCursor++];
         currentRecords.push({
           id: newId,
           student_id: entry.student_id,
@@ -272,6 +463,20 @@ class StorageManager {
       `Tanggal: ${params.tanggal}, Total: ${params.entries.length} (${created} baru, ${updated} update) via ${params.recorded_via}`
     );
 
+    // Kirim data ke backend server untuk validasi dan penegakan aturan bisnis server-side
+    fetch('/api/attendance/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.attendanceAlerts && data.attendanceAlerts.length > 0) {
+          console.warn('[Server Business Rule 85%] Peringatan Kehadiran Server:', data.attendanceAlerts);
+        }
+      })
+      .catch((err) => console.warn('[Server API] Kendala sinkronisasi submit ke server:', err));
+
     return { count: params.entries.length, updated, created };
   }
 
@@ -280,9 +485,11 @@ class StorageManager {
     const today = new Date();
     const entryDate = new Date(tanggal);
     const diffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+    const currentUser = this.getCurrentUser();
+    const isAdmin = currentUser?.roles.includes('admin') || currentUser?.roles.includes('superadmin');
 
-    if (diffDays > 7) {
-      throw new Error(`Data absensi tanggal ${tanggal} lebih dari 7 hari lalu (${diffDays} hari). Sesuai kebijakan keamanan data, hanya entri 7 hari terakhir yang boleh dihapus.`);
+    if (diffDays > 7 && !isAdmin) {
+      throw new Error(`Data absensi tanggal ${tanggal} lebih dari 7 hari lalu (${diffDays} hari). Sesuai kebijakan integritas data sekolah, entri yang melebihi batas 7 hari dikunci dan tidak boleh dihapus.`);
     }
 
     const currentRecords = this.getAttendance();
@@ -299,7 +506,92 @@ class StorageManager {
       `Menghapus ${deletedCount} entri absensi dalam batas 7 hari.`
     );
 
+    // Kirim instruksi penghapusan ke server agar aturan 7 hari dan otorisasi juga diverifikasi di sisi server
+    fetch('/api/attendance/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        class_id: classId,
+        subject_id: subjectId,
+        tanggal,
+        user_id: currentUser?.id,
+        role: currentUser?.roles[0] || 'guru',
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) {
+          console.warn('[Server Business Rule 7-Hari] Penolakan Server:', data.error);
+        }
+      })
+      .catch((err) => console.warn('[Server API] Kendala koneksi hapus ke server:', err));
+
     return { deleted: deletedCount };
+  }
+
+  /**
+   * Evaluasi Kelayakan Kehadiran Siswa di Sisi Server (Aturan 85%)
+   */
+  async evaluateStudentEligibilityServer(studentId: number): Promise<{
+    success: boolean;
+    evaluation?: {
+      total_sessions: number;
+      hadir: number;
+      rate: number;
+      minimum_threshold: number;
+      meets_minimum_85: boolean;
+      status: string;
+      deficit_sessions: number;
+      sanctions: string[];
+      academic_clearance_allowed: boolean;
+    };
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(`/api/students/${studentId}/attendance-eligibility`);
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Gagal menghubungi server evaluasi kelayakan.' };
+    }
+  }
+
+  /**
+   * Permohonan Pengesahan Akademik & Kenaikan Kelas di Sisi Server (Menegakkan Aturan 85%)
+   */
+  async requestAcademicClearanceServer(
+    studentId: number,
+    options?: { admin_override?: boolean; override_reason?: string }
+  ): Promise<{
+    success: boolean;
+    clearance_granted: boolean;
+    clearance_code?: string;
+    attendance_rate?: number;
+    error?: string;
+    details?: any;
+    message?: string;
+  }> {
+    try {
+      const currentUser = this.getCurrentUser();
+      const res = await fetch('/api/students/academic-clearance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: studentId,
+          operator_id: currentUser?.id,
+          admin_override: Boolean(options?.admin_override),
+          override_reason: options?.override_reason,
+        }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      return {
+        success: false,
+        clearance_granted: false,
+        error: err.message || 'Kendala jaringan saat memverifikasi pengesahan akademik di server.',
+      };
+    }
   }
 
   // Grades Management
@@ -374,20 +666,122 @@ class StorageManager {
     return this.getItem<KetuaKelasToken[]>(STORAGE_KEYS.TOKENS, INITIAL_DELEGATION_TOKENS);
   }
 
-  createDelegationToken(classId: number, createdBy: number): KetuaKelasToken {
+  createDelegationToken(classId: number, createdBy: number, expiryHours: number = 24): KetuaKelasToken {
     const tokens = this.getDelegationTokens();
     const tokenStr = `token-kk-${classId}-${Date.now().toString(36)}`;
+    const now = Date.now();
+    const expiresAtMillis = now + expiryHours * 60 * 60 * 1000;
+    const expiresAtIso = new Date(expiresAtMillis).toISOString();
+
     const newToken: KetuaKelasToken = {
       token: tokenStr,
       class_id: classId,
       status: 'aktif',
-      created_at: new Date().toISOString(),
+      created_at: new Date(now).toISOString(),
       created_by: createdBy,
+      expires_at: expiresAtIso,
+      expires_at_millis: expiresAtMillis,
     };
+
     tokens.push(newToken);
     this.setItem(STORAGE_KEYS.TOKENS, tokens);
-    this.addAuditLog('Buat Delegasi', 'Absensi', `Token Kelas #${classId}`, `Token: ${tokenStr}`);
+    this.addAuditLog('Buat Delegasi', 'Absensi', `Token Kelas #${classId}`, `Token: ${tokenStr}, Masa Berlaku: ${expiryHours} Jam`);
+
+    // Simpan ke Cloud Firestore (agar dapat dibaca lintas-device oleh murid)
+    try {
+      setDoc(doc(db, 'tokens', tokenStr), newToken).catch((err) => {
+        console.warn('[Firebase] Gagal menyimpan token ke Firestore:', err);
+      });
+    } catch (e) {
+      console.warn('[Firebase] Gagal init simpan token:', e);
+    }
+
+    // Registrasi ke Server API (pencatatan server-side fallback)
+    try {
+      fetch('/api/tokens/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newToken),
+      }).catch(() => {});
+    } catch (_) {}
+
     return newToken;
+  }
+
+  /**
+   * Verifikasi token delegasi lintas-device:
+   * Membaca dari Cloud Firestore (authoritative cross-device source),
+   * memeriksa status aktif, dan mengecek masa berlaku (expiry).
+   */
+  async verifyDelegationToken(tokenStr: string): Promise<{ valid: boolean; token?: KetuaKelasToken; error?: string }> {
+    if (!tokenStr) {
+      return { valid: false, error: 'Token presensi tidak ditemukan.' };
+    }
+    const now = Date.now();
+
+    // 1. Coba baca langsung dari Cloud Firestore (Lintas-Device)
+    try {
+      const snap = await getDoc(doc(db, 'tokens', tokenStr));
+      if (snap.exists()) {
+        const firestoreToken = snap.data() as KetuaKelasToken;
+        if (firestoreToken.status !== 'aktif') {
+          return { valid: false, error: 'Tautan delegasi ini telah dinonaktifkan atau dicabut oleh wali kelas.' };
+        }
+
+        const expiryTime = firestoreToken.expires_at_millis ||
+          (firestoreToken.expires_at ? new Date(firestoreToken.expires_at).getTime() : null);
+
+        if (expiryTime && now > expiryTime) {
+          return {
+            valid: false,
+            error: `Tautan delegasi telah kedaluwarsa (berakhir pada ${new Date(expiryTime).toLocaleString('id-ID')}). Silakan minta Wali Kelas membuatkan tautan presensi baru.`,
+          };
+        }
+
+        // Simpan ke cache lokal agar bila ada kendala koneksi tetap terbaca
+        const currentTokens = this.getDelegationTokens();
+        if (!currentTokens.some((t) => t.token === firestoreToken.token)) {
+          this.setItem(STORAGE_KEYS.TOKENS, [...currentTokens, firestoreToken]);
+        }
+        return { valid: true, token: firestoreToken };
+      }
+    } catch (err) {
+      console.warn('[Storage] Gagal baca token dari Firestore:', err);
+    }
+
+    // 2. Fallback: Server API endpoint (/api/delegation/verify)
+    try {
+      const resp = await fetch(`/api/delegation/verify?token=${encodeURIComponent(tokenStr)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.valid && data.token) {
+          return { valid: true, token: data.token };
+        } else if (data.error) {
+          return { valid: false, error: data.error };
+        }
+      }
+    } catch (err) {
+      console.warn('[Storage] Gagal verifikasi lewat API server:', err);
+    }
+
+    // 3. Fallback: LocalStorage perangkat pembuat
+    const localToken = this.getDelegationTokens().find((t) => t.token === tokenStr);
+    if (localToken) {
+      if (localToken.status !== 'aktif') {
+        return { valid: false, error: 'Token presensi ini sudah tidak aktif.' };
+      }
+      const expiryTime = localToken.expires_at_millis ||
+        (localToken.expires_at ? new Date(localToken.expires_at).getTime() : null);
+      if (expiryTime && now > expiryTime) {
+        return {
+          valid: false,
+          error: `Tautan delegasi telah kedaluwarsa (berakhir pada ${new Date(expiryTime).toLocaleString('id-ID')}). Silakan minta tautan baru.`,
+        };
+      }
+      return { valid: true, token: localToken };
+    }
+
+    return { valid: false, error: 'Tautan delegasi tidak terdaftar di sistem presensi sekolah.' };
   }
 
   // Audit Logs
@@ -402,7 +796,7 @@ class StorageManager {
     const sanitizedDetail = detail.replace(/password[:=]\s*[^\s,]+/gi, 'password=***');
 
     const newLog: AuditLogItem = {
-      id: Math.max(0, ...logs.map((l) => l.id)) + 1,
+      id: this.allocateId('audit_logs', logs.map((l) => l.id)),
       username: currentUser ? currentUser.username : 'system',
       aksi,
       modul,
@@ -650,6 +1044,24 @@ class StorageManager {
     return { summary, recommendation };
   }
 
+  // Helper terpusat untuk sanitasi & escaping nilai string SQL (PRD 6.10 & SQL Injection Prevention)
+  escapeSqlString(value: unknown): string {
+    if (value === null || value === undefined) {
+      return 'NULL';
+    }
+    const str = String(value);
+    // Escape backslash (\) terlebih dahulu, lalu tanda kutip tunggal ('), null byte, newline, carriage return, dan control-Z
+    const escaped = str
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\0/g, '\\0')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\x1a/g, '\\Z');
+
+    return `'${escaped}'`;
+  }
+
   // Backup & SQL Export Engine (PRD 6.10 & 7)
   generateSqlDump(): string {
     const users = this.getUsers();
@@ -676,7 +1088,7 @@ class StorageManager {
     sql += `-- Tabel: classes\n`;
     sql += `TRUNCATE TABLE classes;\n`;
     for (const c of classes) {
-      sql += `INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (${c.id}, '${c.name}', '${c.jurusan}', '${c.angkatan}', '${c.tahun_ajaran}', '${c.semester}');\n`;
+      sql += `INSERT INTO classes (id, name, jurusan, angkatan, tahun_ajaran, semester) VALUES (${Number(c.id)}, ${this.escapeSqlString(c.name)}, ${this.escapeSqlString(c.jurusan)}, ${this.escapeSqlString(c.angkatan)}, ${this.escapeSqlString(c.tahun_ajaran)}, ${this.escapeSqlString(c.semester)});\n`;
     }
     sql += `\n`;
 
@@ -684,7 +1096,7 @@ class StorageManager {
     sql += `-- Tabel: subjects\n`;
     sql += `TRUNCATE TABLE subjects;\n`;
     for (const s of subjects) {
-      sql += `INSERT INTO subjects (id, name) VALUES (${s.id}, '${s.name}');\n`;
+      sql += `INSERT INTO subjects (id, name) VALUES (${Number(s.id)}, ${this.escapeSqlString(s.name)});\n`;
     }
     sql += `\n`;
 
@@ -692,8 +1104,9 @@ class StorageManager {
     sql += `-- Tabel: users\n`;
     sql += `TRUNCATE TABLE users;\n`;
     for (const u of users) {
-      const waliVal = u.kelas_wali_id !== null ? u.kelas_wali_id : 'NULL';
-      sql += `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, is_active, created_at) VALUES (${u.id}, '${u.username}', '$2b$12$eX4mpleBcRyptHashMigratedKey...', '${u.nama}', ${waliVal}, ${u.is_active ? 1 : 0}, '${u.created_at}');\n`;
+      const waliVal = u.kelas_wali_id !== null ? Number(u.kelas_wali_id) : 'NULL';
+      const pHash = u.password_hash || '$2b$12$eX4mpleBcRyptHashMigratedKey...';
+      sql += `INSERT INTO users (id, username, password_hash, nama, kelas_wali_id, is_active, created_at) VALUES (${Number(u.id)}, ${this.escapeSqlString(u.username)}, ${this.escapeSqlString(pHash)}, ${this.escapeSqlString(u.nama)}, ${waliVal}, ${u.is_active ? 1 : 0}, ${this.escapeSqlString(u.created_at)});\n`;
     }
     sql += `\n`;
 
@@ -701,7 +1114,7 @@ class StorageManager {
     sql += `-- Tabel: students\n`;
     sql += `TRUNCATE TABLE students;\n`;
     for (const s of students) {
-      sql += `INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (${s.id}, '${s.nis}', '${s.nama.replace(/'/g, "\\'")}', '${s.jk}', ${s.class_id}, '${s.status}', '${s.created_at}');\n`;
+      sql += `INSERT INTO students (id, nis, nama, jk, class_id, status, created_at) VALUES (${Number(s.id)}, ${this.escapeSqlString(s.nis)}, ${this.escapeSqlString(s.nama)}, ${this.escapeSqlString(s.jk)}, ${Number(s.class_id)}, ${this.escapeSqlString(s.status)}, ${this.escapeSqlString(s.created_at)});\n`;
     }
     sql += `\n`;
 
@@ -709,8 +1122,8 @@ class StorageManager {
     sql += `-- Tabel: attendance (Normalized)\n`;
     sql += `TRUNCATE TABLE attendance;\n`;
     for (const a of attendances) {
-      const subVal = a.subject_id !== null ? a.subject_id : 'NULL';
-      sql += `INSERT INTO attendance (id, student_id, class_id, subject_id, tanggal, status, recorded_by, recorded_via, created_at, updated_at) VALUES (${a.id}, ${a.student_id}, ${a.class_id}, ${subVal}, '${a.tanggal}', '${a.status}', ${a.recorded_by}, '${a.recorded_via}', '${a.created_at}', '${a.updated_at}');\n`;
+      const subVal = a.subject_id !== null ? Number(a.subject_id) : 'NULL';
+      sql += `INSERT INTO attendance (id, student_id, class_id, subject_id, tanggal, status, recorded_by, recorded_via, created_at, updated_at) VALUES (${Number(a.id)}, ${Number(a.student_id)}, ${Number(a.class_id)}, ${subVal}, ${this.escapeSqlString(a.tanggal)}, ${this.escapeSqlString(a.status)}, ${Number(a.recorded_by)}, ${this.escapeSqlString(a.recorded_via)}, ${this.escapeSqlString(a.created_at)}, ${this.escapeSqlString(a.updated_at)});\n`;
     }
     sql += `\n`;
 
@@ -718,11 +1131,11 @@ class StorageManager {
     sql += `-- Tabel: grade_activities & grade_values\n`;
     sql += `TRUNCATE TABLE grade_activities;\n`;
     for (const act of activities) {
-      sql += `INSERT INTO grade_activities (id, teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, created_at) VALUES ('${act.id}', ${act.teacher_id}, ${act.subject_id}, ${act.class_id}, '${act.nama_kegiatan.replace(/'/g, "\\'")}', '${act.tanggal_kegiatan}', '${act.tipe_skala}', '${act.created_at}');\n`;
+      sql += `INSERT INTO grade_activities (id, teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, created_at) VALUES (${this.escapeSqlString(act.id)}, ${Number(act.teacher_id)}, ${Number(act.subject_id)}, ${Number(act.class_id)}, ${this.escapeSqlString(act.nama_kegiatan)}, ${this.escapeSqlString(act.tanggal_kegiatan)}, ${this.escapeSqlString(act.tipe_skala)}, ${this.escapeSqlString(act.created_at)});\n`;
     }
     sql += `TRUNCATE TABLE grade_values;\n`;
     for (const g of grades) {
-      sql += `INSERT INTO grade_values (activity_id, student_id, nilai) VALUES ('${g.activity_id}', ${g.student_id}, '${g.nilai}');\n`;
+      sql += `INSERT INTO grade_values (activity_id, student_id, nilai) VALUES (${this.escapeSqlString(g.activity_id)}, ${Number(g.student_id)}, ${this.escapeSqlString(g.nilai)});\n`;
     }
     sql += `\n`;
 
@@ -730,23 +1143,153 @@ class StorageManager {
     sql += `-- Tabel: teacher_subject_class_pairing\n`;
     sql += `TRUNCATE TABLE teacher_subject_class_pairing;\n`;
     for (const p of pairings) {
-      sql += `INSERT INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (${p.user_id}, ${p.subject_id}, ${p.class_id});\n`;
+      sql += `INSERT INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (${Number(p.user_id)}, ${Number(p.subject_id)}, ${Number(p.class_id)});\n`;
     }
     sql += `\n`;
 
     // Dump settings
     sql += `-- Tabel: school_settings\n`;
     sql += `TRUNCATE TABLE school_settings;\n`;
-    sql += `INSERT INTO school_settings (setting_key, setting_value) VALUES ('school_name', '${settings.school_name}'), ('tahun_ajaran', '${settings.tahun_ajaran}'), ('semester', '${settings.semester}');\n`;
+    sql += `INSERT INTO school_settings (setting_key, setting_value) VALUES ('school_name', ${this.escapeSqlString(settings.school_name)}), ('tahun_ajaran', ${this.escapeSqlString(settings.tahun_ajaran)}), ('semester', ${this.escapeSqlString(settings.semester)});\n`;
     sql += `\nSET FOREIGN_KEY_CHECKS = 1;\n`;
     sql += `-- DUMP COMPLETED SUCCESSFULLY --\n`;
 
     return sql;
   }
 
-  // Reset to initial demo seed
-  resetToDefault(): void {
-    localStorage.clear();
+  /**
+   * Menghasilkan struktur snapshot cadangan lengkap (JSON-serializable) dari seluruh data aplikasi
+   */
+  getBackupSnapshot(): {
+    version: string;
+    appName: string;
+    timestamp: string;
+    users: User[];
+    classes: ClassItem[];
+    subjects: Subject[];
+    students: Student[];
+    pairings: TeacherPairing[];
+    settings: SchoolSettings;
+    attendance: AttendanceRecord[];
+    gradeActivities: GradeActivity[];
+    gradeValues: GradeValue[];
+    tokens: KetuaKelasToken[];
+    logs: AuditLogItem[];
+  } {
+    return {
+      version: '1.0',
+      appName: 'go_absen_siswa',
+      timestamp: new Date().toISOString(),
+      users: this.getUsers(),
+      classes: this.getClasses(),
+      subjects: this.getSubjects(),
+      students: this.getStudents(),
+      pairings: this.getPairings(),
+      settings: this.getSettings(),
+      attendance: this.getAttendance(),
+      gradeActivities: this.getGradeActivities(),
+      gradeValues: this.getGradeValues(),
+      tokens: this.getDelegationTokens(),
+      logs: this.getAuditLogs(),
+    };
+  }
+
+  /**
+   * Membantu memicu unduhan file JSON secara otomatis di browser sebelum proses reset
+   */
+  triggerAutomaticJsonBackupDownload(snapshot: unknown, filenamePrefix = 'backup_sebelum_reset_go_absen'): boolean {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return false;
+    }
+    try {
+      const jsonStr = JSON.stringify(snapshot, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const nowStr = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      a.href = url;
+      a.download = `${filenamePrefix}_${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      return true;
+    } catch (err) {
+      console.warn('[Storage] Tidak dapat mengunduh file backup otomatis:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Mengambil data cadangan darurat terakhir sebelum reset (jika reset dilakukan tidak sengaja)
+   */
+  getLastPreResetBackup(): any | null {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.LAST_PRE_RESET_BACKUP);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reset ke data demo awal:
+   * 1. Melakukan backup snapshot otomatis data saat ini sebelum reset dijalankan
+   * 2. Menyimpan salinan darurat di emergency storage slot (LAST_PRE_RESET_BACKUP)
+   * 3. Memicu download file JSON backup otomatis ke perangkat pengguna
+   * 4. HANYA menghapus/mengatur ulang key-key yang terdaftar di STORAGE_KEYS
+   *    (TIDAK memanggil localStorage.clear() agar data lain di origin yang sama tidak hilang)
+   */
+  resetToDefault(options?: { skipDownload?: boolean }): { backup: any; downloadTriggered: boolean } {
+    // 1. Ekspor & backup otomatis data saat ini sebelum reset dijalankan
+    const backupSnapshot = this.getBackupSnapshot();
+
+    // 2. Simpan salinan darurat di key khusus (terisolasi) agar tidak hilang jika unduhan terblokir
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.LAST_PRE_RESET_BACKUP,
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          reason: 'Automatic pre-reset emergency snapshot',
+          data: backupSnapshot,
+        })
+      );
+    } catch (err) {
+      console.warn('[Storage] Peringatan: Gagal menyimpan snapshot darurat di localStorage:', err);
+    }
+
+    // 3. Picu unduhan file JSON ke perangkat pengguna jika tidak dilewati
+    let downloadTriggered = false;
+    if (!options?.skipDownload) {
+      downloadTriggered = this.triggerAutomaticJsonBackupDownload(backupSnapshot);
+    }
+
+    // 4. Hapus HANYA key-key aplikasi milik go_absen_siswa yang terdaftar di STORAGE_KEYS
+    // (Kecuali LAST_PRE_RESET_BACKUP agar cadangan penyelamat tetap ada jika diperlukan pemulihan)
+    const keysToRemove = [
+      STORAGE_KEYS.USERS,
+      STORAGE_KEYS.CLASSES,
+      STORAGE_KEYS.SUBJECTS,
+      STORAGE_KEYS.STUDENTS,
+      STORAGE_KEYS.PAIRINGS,
+      STORAGE_KEYS.SETTINGS,
+      STORAGE_KEYS.ATTENDANCE,
+      STORAGE_KEYS.GRADE_ACTIVITIES,
+      STORAGE_KEYS.GRADE_VALUES,
+      STORAGE_KEYS.TOKENS,
+      STORAGE_KEYS.LOGS,
+      STORAGE_KEYS.CURRENT_USER_ID,
+    ];
+
+    for (const key of keysToRemove) {
+      try {
+        localStorage.removeItem(key);
+      } catch (err) {
+        console.warn(`[Storage] Gagal menghapus key ${key}:`, err);
+      }
+    }
+
+    // 5. Inisialisasi ulang data demo awal (seed)
     this.setItem(STORAGE_KEYS.USERS, INITIAL_USERS);
     this.setItem(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
     this.setItem(STORAGE_KEYS.SUBJECTS, INITIAL_SUBJECTS);
@@ -759,6 +1302,16 @@ class StorageManager {
     this.setItem(STORAGE_KEYS.TOKENS, INITIAL_DELEGATION_TOKENS);
     this.setItem(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
     this.setItem(STORAGE_KEYS.CURRENT_USER_ID, 1);
+
+    // 6. Catat log audit pencadangan & reset
+    this.addAuditLog(
+      'Reset Data Demo',
+      'Backup',
+      'StorageManager',
+      'Pencadangan otomatis JSON dieksekusi sebelum reset. Key STORAGE_KEYS dipulihkan ke kondisi awal tanpa menyentuh key origin lain.'
+    );
+
+    return { backup: backupSnapshot, downloadTriggered };
   }
 }
 

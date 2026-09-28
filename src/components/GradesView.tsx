@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { User, ClassItem, Subject, GradeActivity, GradeValue } from '../types';
-import { storage } from '../services/storage';
+import { storage, generateGlobalUUID } from '../services/storage';
 import { exportGradeRecapToExcel } from '../utils/excel';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
 import {
@@ -88,7 +88,7 @@ export const GradesView: React.FC<GradesViewProps> = ({
 
   // Start new activity
   const handleNewActivity = () => {
-    setActivityId(`act-${Date.now()}`);
+    setActivityId(generateGlobalUUID('act'));
     setNamaKegiatan('');
     setTanggalKegiatan(new Date().toISOString().substring(0, 10));
     setTipeSkala('angka');

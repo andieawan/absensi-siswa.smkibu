@@ -3,6 +3,7 @@ export type Role = 'guru' | 'admin' | 'superadmin' | 'kepsek' | 'bk';
 export interface User {
   id: number;
   username: string;
+  password_hash?: string;
   nama: string;
   kelas_wali_id: number | null;
   foto_profil_url?: string | null;
@@ -51,6 +52,7 @@ export interface AttendanceRecord {
   notes?: string;
   created_at: string;
   updated_at: string;
+  created_at_millis?: number;
 }
 
 export interface GradeActivity {
@@ -79,9 +81,11 @@ export interface TeacherPairing {
 export interface KetuaKelasToken {
   token: string;
   class_id: number;
-  status: 'aktif' | 'nonaktif';
+  status: 'aktif' | 'nonaktif' | 'kadaluarsa';
   created_at: string;
   created_by: number;
+  expires_at?: string; // ISO string batas waktu (misal 24 jam)
+  expires_at_millis?: number; // Epoch timestamp ms untuk validasi Firestore Rules & waktu server
 }
 
 export interface AuditLogItem {

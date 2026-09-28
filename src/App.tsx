@@ -5,8 +5,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { storage } from './services/storage';
+import { authService } from './services/auth';
 import { User, ClassItem, Subject } from './types';
 import { Navbar } from './components/Navbar';
+import { LoginGateView } from './components/LoginGateView';
+import { SwitchUserModal } from './components/SwitchUserModal';
 import { DashboardView } from './components/DashboardView';
 import { AttendanceView } from './components/AttendanceView';
 import { GradesView } from './components/GradesView';
@@ -14,15 +17,24 @@ import { Student360View } from './components/Student360View';
 import { AdminPanelView } from './components/AdminPanelView';
 import { BkView } from './components/BkView';
 import { DelegatedStudentView } from './components/DelegatedStudentView';
-import { testFirestoreConnection, syncStorageToFirestore } from './services/firestoreSync';
-import { ShieldCheck, Server, Database, Check, Flame } from 'lucide-react';
+import {
+  testFirestoreConnection,
+  syncStorageToFirestore,
+  syncFirestoreToStorage,
+  initializeBidirectionalSync,
+} from './services/firestoreSync';
+import { ShieldCheck, Server, Database, Check, Flame, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User>(() => storage.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getAuthenticatedUser());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
   const [allUsers, setAllUsers] = useState<User[]>(() => storage.getUsers());
   const [classes, setClasses] = useState<ClassItem[]>(() => storage.getClasses());
   const [subjects, setSubjects] = useState<Subject[]>(() => storage.getSubjects());
   const [firestoreConnected, setFirestoreConnected] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [syncedCounts, setSyncedCounts] = useState<{ students: number; attendance: number } | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -33,12 +45,37 @@ export default function App() {
   // Delegated mode (Ketua Kelas token)
   const [delegatedToken, setDelegatedToken] = useState<string | null>(null);
 
-  // Initialize and validate Firestore connection on mount
+  // Switching user modal state
+  const [pendingSwitchUserId, setPendingSwitchUserId] = useState<number | null>(null);
+
+  const runBidirectionalSync = async () => {
+    setSyncStatus('syncing');
+    try {
+      const res = await initializeBidirectionalSync();
+      if (res.success) {
+        setSyncStatus('synced');
+        setSyncedCounts(res.counts);
+        setLastSyncTime(
+          new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        );
+        // Refresh component states with newly hydrated data
+        setAllUsers(storage.getUsers());
+        setClasses(storage.getClasses());
+        setSubjects(storage.getSubjects());
+      } else {
+        setSyncStatus('idle');
+      }
+    } catch {
+      setSyncStatus('error');
+    }
+  };
+
+  // Initialize and validate Firestore connection and run bidirectional sync on mount
   useEffect(() => {
-    testFirestoreConnection().then((connected) => {
+    testFirestoreConnection().then(async (connected) => {
       setFirestoreConnected(connected);
       if (connected) {
-        syncStorageToFirestore();
+        await runBidirectionalSync();
       }
     });
   }, []);
@@ -52,28 +89,79 @@ export default function App() {
     }
   }, []);
 
-  const handleSelectUser = (userId: number) => {
+  /**
+   * Protected user selection:
+   * STRICT REQUIREMENT: Cannot be invoked without credential verification (password/PIN).
+   */
+  const handleSelectUser = (
+    userId: number,
+    passwordAttempt?: string
+  ): { success: boolean; error?: string } => {
+    if (!passwordAttempt) {
+      console.warn('handleSelectUser ditolak: Kredensial password/PIN wajib disertakan dan diverifikasi.');
+      return {
+        success: false,
+        error: 'Verifikasi kredensial (password/PIN) diperlukan sebelum beralih akun.',
+      };
+    }
+
+    const verification = authService.verifyCredentials(userId, passwordAttempt);
+    if (!verification.success || !verification.user) {
+      return {
+        success: false,
+        error: verification.error || 'Password atau PIN tidak valid.',
+      };
+    }
+
+    // Credentials successfully verified
     const user = storage.setCurrentUser(userId);
+    authService.setAuthenticatedUser(user);
     setCurrentUser(user);
+    setPendingSwitchUserId(null);
+
     // If switching from admin tab when new user lacks admin role, navigate to dashboard
     if (activeTab === 'admin' && !user.roles.includes('admin') && !user.roles.includes('superadmin')) {
       setActiveTab('dashboard');
     }
+
+    return { success: true };
+  };
+
+  const handleRequestSwitchUser = (userId: number) => {
+    if (userId === currentUser?.id) return;
+    setPendingSwitchUserId(userId);
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setActiveTab('dashboard');
+    setInspectedStudentId(null);
   };
 
   const handleRefreshData = () => {
     setAllUsers(storage.getUsers());
-    setCurrentUser(storage.getCurrentUser());
+    setCurrentUser(authService.getAuthenticatedUser());
     setClasses(storage.getClasses());
     setSubjects(storage.getSubjects());
   };
 
   const handleResetDemo = () => {
-    if (confirm('Kembalikan seluruh data demo ke kondisi awal (termasuk riwayat absensi & kegiatan nilai)?')) {
-      storage.resetToDefault();
+    if (
+      confirm(
+        'Kembalikan seluruh data demo ke kondisi awal (termasuk riwayat absensi & kegiatan nilai)?\n\n' +
+        'Catatan Keamanan: File backup JSON otomatis akan diunduh terlebih dahulu dan salinan darurat disimpan agar data Anda tidak hilang.'
+      )
+    ) {
+      const result = storage.resetToDefault();
       handleRefreshData();
       setActiveTab('dashboard');
-      alert('Data demo berhasil direset ke kondisi awal!');
+      alert(
+        result.downloadTriggered
+          ? 'Data demo berhasil direset ke kondisi awal! Salinan cadangan (backup JSON) telah otomatis diunduh ke perangkat Anda.'
+          : 'Data demo berhasil direset ke kondisi awal! Salinan darurat telah dicadangkan di memori sistem.'
+      );
     }
   };
 
@@ -82,12 +170,38 @@ export default function App() {
     setActiveTab('students');
   };
 
+  // 1. Delegated student mode (Ketua Kelas URL link ?token=...)
+  if (delegatedToken) {
+    return (
+      <DelegatedStudentView
+        token={delegatedToken}
+        onExit={() => {
+          setDelegatedToken(null);
+          window.history.replaceState({}, '', window.location.pathname);
+        }}
+      />
+    );
+  }
+
+  // 2. Authentication Gate: If not authenticated or no user session, render Login Gate View
+  if (!isAuthenticated || !currentUser) {
+    return (
+      <LoginGateView
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* Top Navbar */}
       <Navbar
         currentUser={currentUser}
-        onSelectUser={handleSelectUser}
+        onRequestSwitchUser={handleRequestSwitchUser}
+        onLogout={handleLogout}
         allUsers={allUsers}
         activeTab={activeTab}
         onTabChange={(tab) => {
@@ -97,11 +211,7 @@ export default function App() {
           }
         }}
         onResetDemo={handleResetDemo}
-        isDelegatedMode={Boolean(delegatedToken)}
-        onExitDelegation={() => {
-          setDelegatedToken(null);
-          window.history.replaceState({}, '', window.location.pathname);
-        }}
+        isDelegatedMode={false}
       />
 
       {/* Main Viewport Container */}
@@ -190,17 +300,52 @@ export default function App() {
               <Database className="w-3.5 h-3.5 text-indigo-600" />
               <span>MySQL Relational Engine</span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-600">
+            <div className="flex items-center gap-1.5 text-slate-700">
               <Flame className="w-3.5 h-3.5 text-amber-500" />
-              <span>Cloud Firestore (asia-southeast1)</span>
+              <span>
+                Cloud Firestore Aktif (Sinkron 2-Arah
+                {syncedCounts ? `: ${syncedCounts.students} Siswa, ${syncedCounts.attendance} Absensi` : ''})
+              </span>
             </div>
-            <div className="flex items-center gap-1 text-emerald-700 font-semibold">
-              <Check className="w-3.5 h-3.5" />
-              <span>Sistem Aktif</span>
-            </div>
+
+            {syncStatus === 'syncing' ? (
+              <div className="flex items-center gap-1 text-indigo-600 font-medium">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Sinkronisasi...</span>
+              </div>
+            ) : syncStatus === 'synced' ? (
+              <button
+                type="button"
+                onClick={runBidirectionalSync}
+                title={`Sinkronisasi dua arah aktif · Terakhir: ${lastSyncTime || 'Baru saja'}`}
+                className="flex items-center gap-1 text-emerald-700 font-semibold hover:text-emerald-800 transition-colors"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Sinkron Dua Arah ({lastSyncTime || 'Lengkap'})</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={runBidirectionalSync}
+                className="flex items-center gap-1 text-slate-600 hover:text-indigo-600 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                <span>Sinkronkan Sekarang</span>
+              </button>
+            )}
           </div>
         </div>
       </footer>
+
+      {/* Switch User Credential Verification Modal */}
+      {pendingSwitchUserId && (
+        <SwitchUserModal
+          isOpen={Boolean(pendingSwitchUserId)}
+          targetUser={allUsers.find((u) => u.id === pendingSwitchUserId) || null}
+          onClose={() => setPendingSwitchUserId(null)}
+          onConfirmSwitch={(password) => handleSelectUser(pendingSwitchUserId, password)}
+        />
+      )}
     </div>
   );
 }

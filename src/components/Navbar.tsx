@@ -10,11 +10,14 @@ import {
   HeartHandshake,
   UserCog,
   RefreshCw,
+  LogOut,
 } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: User;
-  onSelectUser: (userId: number) => void;
+  onSelectUser?: (userId: number) => void;
+  onRequestSwitchUser: (userId: number) => void;
+  onLogout: () => void;
   allUsers: User[];
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -25,7 +28,8 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
-  onSelectUser,
+  onRequestSwitchUser,
+  onLogout,
   allUsers,
   activeTab,
   onTabChange,
@@ -167,7 +171,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <UserCog className="w-4 h-4 text-slate-400 absolute left-2 pointer-events-none" />
                   <select
                     value={currentUser.id}
-                    onChange={(e) => onSelectUser(Number(e.target.value))}
+                    onChange={(e) => {
+                      const targetId = Number(e.target.value);
+                      if (targetId !== currentUser.id) {
+                        onRequestSwitchUser(targetId);
+                      }
+                    }}
                     aria-label="Pilih Akun / Peran Pengguna"
                     className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-800 hover:bg-slate-100 transition-colors focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
                   >
@@ -190,6 +199,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={onLogout}
+                  title="Keluar / Kunci Sesi"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Keluar</span>
                 </button>
               </div>
             )}

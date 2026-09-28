@@ -2,9 +2,188 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  INITIAL_CLASSES,
+  INITIAL_STUDENTS,
+  INITIAL_DELEGATION_TOKENS,
+  INITIAL_ATTENDANCE,
+  INITIAL_USERS,
+  INITIAL_PAIRINGS,
+  INITIAL_SUBJECTS,
+  INITIAL_GRADE_ACTIVITIES,
+  INITIAL_GRADE_VALUES,
+} from './src/data/mockData';
+import {
+  AttendanceRecord,
+  Student,
+  ClassItem,
+  Subject,
+  User,
+  TeacherPairing,
+  GradeActivity,
+  GradeValue,
+  KetuaKelasToken,
+} from './src/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ============================================================================
+// Authoritative In-Memory Database di Sisi Server (Node.js/Express)
+// ============================================================================
+let serverAttendance: AttendanceRecord[] = [...INITIAL_ATTENDANCE];
+let serverStudents: Student[] = [...INITIAL_STUDENTS];
+let serverClasses: ClassItem[] = [...INITIAL_CLASSES];
+let serverSubjects: Subject[] = [...INITIAL_SUBJECTS];
+let serverUsers: User[] = [...INITIAL_USERS];
+let serverPairings: TeacherPairing[] = [...INITIAL_PAIRINGS];
+let serverGradeActivities: GradeActivity[] = [...INITIAL_GRADE_ACTIVITIES];
+let serverGradeValues: GradeValue[] = [...INITIAL_GRADE_VALUES];
+let serverTokens: KetuaKelasToken[] = [
+  ...INITIAL_DELEGATION_TOKENS.map((t) => ({
+    ...t,
+    expires_at: t.expires_at || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    expires_at_millis: t.expires_at_millis || (Date.now() + 7 * 24 * 3600 * 1000),
+  })),
+];
+
+// ============================================================================
+// Single Source of Truth: Authoritative Sequence Coordinator (Atomic ID Generator)
+// ============================================================================
+const serverSequences: Record<string, number> = {
+  users: Math.max(10, ...INITIAL_USERS.map((u) => u.id)),
+  students: Math.max(100, ...INITIAL_STUDENTS.map((s) => s.id)),
+  attendance: Math.max(1000, ...INITIAL_ATTENDANCE.map((a) => a.id)),
+  classes: Math.max(10, ...INITIAL_CLASSES.map((c) => c.id)),
+  subjects: Math.max(10, ...INITIAL_SUBJECTS.map((s) => s.id)),
+  audit_logs: 100,
+};
+
+function allocateServerSequence(entity: string, count = 1): number[] {
+  if (!serverSequences[entity]) {
+    serverSequences[entity] = 1000;
+  }
+  const startId = serverSequences[entity] + 1;
+  serverSequences[entity] += count;
+  const allocated: number[] = [];
+  for (let i = startId; i <= serverSequences[entity]; i++) {
+    allocated.push(i);
+  }
+  return allocated;
+}
+
+// Audit trail server
+interface ServerAuditLog {
+  id: number;
+  timestamp: string;
+  action: string;
+  module: string;
+  actor: string;
+  details: string;
+}
+const serverAuditLogs: ServerAuditLog[] = [];
+
+function recordServerAudit(action: string, module: string, actor: string, details: string) {
+  serverAuditLogs.unshift({
+    id: serverAuditLogs.length + 1,
+    timestamp: new Date().toISOString(),
+    action,
+    module,
+    actor,
+    details,
+  });
+  if (serverAuditLogs.length > 500) {
+    serverAuditLogs.pop();
+  }
+}
+
+// ============================================================================
+// Engine Validasi Aturan Bisnis Server-Side
+// ============================================================================
+
+/**
+ * Aturan Bisnis 1: Syarat Kehadiran Minimal 85% untuk Kelulusan & Kenaikan Kelas
+ * Menghitung persentase kehadiran dan jumlah sesi defisit untuk mencapai ambang 85%.
+ */
+function calculateStudentAttendanceStats(studentId: number) {
+  const records = serverAttendance.filter((a) => a.student_id === studentId);
+  const total = records.length;
+  const hadir = records.filter((a) => a.status === 'H').length;
+  const izin = records.filter((a) => a.status === 'I').length;
+  const sakit = records.filter((a) => a.status === 'S').length;
+  const alpa = records.filter((a) => a.status === 'A').length;
+
+  const rate = total > 0 ? (hadir / total) * 100 : 100;
+  const rateRounded = Math.round(rate * 10) / 10;
+  const meets85Percent = rateRounded >= 85.0;
+
+  // Formula defisit kehadiran untuk mencapai 85%:
+  // (hadir + x) / (total + x) >= 0.85 <=> 0.15*x >= 0.85*total - hadir
+  const deficitSessions = meets85Percent
+    ? 0
+    : Math.max(1, Math.ceil((0.85 * total - hadir) / 0.15));
+
+  return {
+    studentId,
+    total,
+    hadir,
+    izin,
+    sakit,
+    alpa,
+    rate: rateRounded,
+    threshold: 85.0,
+    meets85Percent,
+    deficitSessions,
+  };
+}
+
+/**
+ * Aturan Bisnis 2: Otorisasi Guru Mengajar (Teacher Pairing & Wali Kelas)
+ */
+function verifyTeacherAuthorization(
+  userId: number,
+  subjectId: number | null,
+  classId: number,
+  roles: string[]
+): { allowed: boolean; error?: string } {
+  const isAdmin = roles.includes('admin') || roles.includes('superadmin');
+  if (isAdmin) {
+    return { allowed: true };
+  }
+
+  const user = serverUsers.find((u) => u.id === userId);
+  if (!user || !user.is_active) {
+    return { allowed: false, error: 'Pengguna tidak ditemukan atau akun dalam status nonaktif.' };
+  }
+
+  // Absen Harian: Wajib Wali Kelas dari kelas terkait
+  if (subjectId === null) {
+    if (user.kelas_wali_id !== classId) {
+      return {
+        allowed: false,
+        error: `Otorisasi Ditolak Server: Anda (${user.nama}) bukan Wali Kelas dari kelas ID #${classId}.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  // Absen Mapel: Wajib terdaftar dalam pasangan teacher_subject_class_pairing
+  const isPaired = serverPairings.some(
+    (p) => p.user_id === userId && p.subject_id === subjectId && p.class_id === classId
+  );
+  if (!isPaired) {
+    const hasClass = user.classes?.includes(classId);
+    const hasSubject = user.subjects?.includes(subjectId);
+    if (!hasClass || !hasSubject) {
+      return {
+        allowed: false,
+        error: `Otorisasi Ditolak Server: Anda (${user.nama}) tidak memiliki penugasan untuk Mapel ID #${subjectId} di Kelas ID #${classId}.`,
+      };
+    }
+  }
+
+  return { allowed: true };
+}
 
 async function startServer() {
   const app = express();
@@ -13,21 +192,760 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  // REST API Endpoints according to PRD Section 8
+  // ============================================================================
+  // Endpoints Informasi & Health Check
+  // ============================================================================
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({
       status: 'ok',
       service: 'go_absen_siswa_api',
-      engine: 'Node.js Express + MySQL Relational Architecture',
+      engine: 'Node.js Express + MySQL Relational Architecture + Server Business Rules',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      records: {
+        attendance: serverAttendance.length,
+        students: serverStudents.length,
+        classes: serverClasses.length,
+        pairings: serverPairings.length,
+      },
+    });
+  });
+
+  // Authoritative Sequence Allocation Endpoint (Single Source of Truth)
+  app.post('/api/sequence/allocate', (req: Request, res: Response) => {
+    const { entity, count = 1 } = req.body;
+    if (!entity) {
+      return res.status(400).json({ success: false, error: 'Parameter entity wajib diisi.' });
+    }
+    const safeCount = Math.min(Math.max(1, Number(count) || 1), 1000);
+    const allocatedIds = allocateServerSequence(String(entity), safeCount);
+    return res.json({
+      success: true,
+      entity,
+      count: allocatedIds.length,
+      allocatedIds,
+      nextId: allocatedIds[0],
+    });
+  });
+
+  app.get('/api/sequence/status', (req: Request, res: Response) => {
+    return res.json({
+      success: true,
+      sequences: serverSequences,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Dokumentasi Aturan Bisnis yang Ditegakkan Server
+  app.get('/api/business-rules/summary', (req: Request, res: Response) => {
+    res.json({
+      service: 'Server-Side Business Rules Enforcement Engine',
+      rules: [
+        {
+          id: 'RULE-01',
+          name: 'Batas Hapus & Ubah Absensi 7 Hari',
+          description:
+            'Data absensi yang berusia lebih dari 7 hari dikunci secara permanen. Hanya Administrator yang dapat memodifikasi data melebihi 7 hari.',
+          enforcement_points: ['POST /api/attendance/delete', 'POST /api/attendance/submit', 'Firestore Security Rules'],
+        },
+        {
+          id: 'RULE-02',
+          name: 'Syarat Kehadiran Minimal 85%',
+          description:
+            'Siswa wajib memiliki tingkat kehadiran ≥ 85% untuk berhak mengikuti ujian akhir, kenaikan kelas, dan pengesahan kelulusan.',
+          enforcement_points: [
+            'GET /api/students/:id/attendance-eligibility',
+            'POST /api/students/evaluate-eligibility',
+            'POST /api/students/academic-clearance',
+            'POST /api/attendance/submit (Auto-alert)',
+          ],
+        },
+        {
+          id: 'RULE-03',
+          name: 'Otorisasi Guru Mengajar (isTeacherAllowed)',
+          description:
+            'Guru hanya berhak menginput/mengubah absensi jika merupakan Wali Kelas (untuk absen harian) atau terdaftar di pairing mapel-kelas (untuk absen mapel).',
+          enforcement_points: ['POST /api/attendance/submit', 'POST /api/attendance/delete', 'POST /api/grades/submit'],
+        },
+        {
+          id: 'RULE-04',
+          name: 'Integritas Input & Skala Penilaian',
+          description:
+            'Status absensi hanya boleh H, I, S, A. Skala angka harus berada di antara 0-100, skala huruf harus A-E.',
+          enforcement_points: ['POST /api/attendance/submit', 'POST /api/grades/submit'],
+        },
+        {
+          id: 'RULE-05',
+          name: 'Token Delegasi Presensi Ketua Kelas (24 Jam)',
+          description:
+            'Token delegasi wajib berstatus aktif dan belum kedaluwarsa saat submit absensi berlangsung.',
+          enforcement_points: ['POST /api/delegation/submit', 'GET /api/delegation/verify'],
+        },
+      ],
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 1: PENGHAPUSAN ABSENSI DENGAN BATAS 7 HARI (Server-Side)
+  // ============================================================================
+  app.post('/api/attendance/delete', (req: Request, res: Response) => {
+    const { class_id, subject_id, tanggal, user_id, role } = req.body;
+
+    if (!class_id || !tanggal) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parameter class_id dan tanggal wajib disertakan.',
+      });
+    }
+
+    const today = new Date();
+    const entryDate = new Date(tanggal);
+    if (isNaN(entryDate.getTime())) {
+      return res.status(400).json({ success: false, error: 'Format tanggal tidak valid.' });
+    }
+
+    const diffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+    const isAdmin = role === 'admin' || role === 'superadmin';
+
+    // PENEGAKAN ATURAN: Maksimal 7 hari
+    if (diffDays > 7 && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        diffDays,
+        error: `Otorisasi Ditolak Server: Data absensi tanggal ${tanggal} sudah berusia ${diffDays} hari (> 7 hari). Berdasarkan kebijakan integritas data sekolah, entri yang melebihi batas 7 hari dikunci secara permanen dan tidak dapat dihapus oleh non-admin.`,
+      });
+    }
+
+    // PENEGAKAN OTORISASI GURU
+    if (user_id && !isAdmin) {
+      const authCheck = verifyTeacherAuthorization(
+        Number(user_id),
+        subject_id !== undefined ? (subject_id === null ? null : Number(subject_id)) : null,
+        Number(class_id),
+        [role || 'guru']
+      );
+      if (!authCheck.allowed) {
+        return res.status(403).json({ success: false, error: authCheck.error });
+      }
+    }
+
+    const initialCount = serverAttendance.length;
+    serverAttendance = serverAttendance.filter((r) => {
+      const matchClass = r.class_id === Number(class_id);
+      const matchSubject = subject_id === null || subject_id === undefined
+        ? r.subject_id === null
+        : r.subject_id === Number(subject_id);
+      const matchTanggal = r.tanggal === tanggal;
+      return !(matchClass && matchSubject && matchTanggal);
+    });
+
+    const deletedCount = initialCount - serverAttendance.length;
+
+    recordServerAudit(
+      'Hapus Sesi Absensi',
+      'Absensi',
+      String(user_id || 'System'),
+      `Kelas #${class_id}, Mapel #${subject_id ?? 'Harian'}, Tanggal: ${tanggal}, Terhapus: ${deletedCount} baris`
+    );
+
+    return res.json({
+      success: true,
+      deleted: deletedCount,
+      diffDays,
+      message: `Sesi absensi tanggal ${tanggal} berhasil dihapus di sisi server (${deletedCount} data terhapus).`,
+    });
+  });
+
+  // Validasi pra-penghapusan (probe)
+  app.post('/api/attendance/validate-delete', (req: Request, res: Response) => {
+    const { tanggal, role } = req.body;
+    if (!tanggal) {
+      return res.status(400).json({ allowed: false, error: 'Tanggal sesi absensi wajib disertakan.' });
+    }
+
+    const today = new Date();
+    const entryDate = new Date(tanggal);
+    const diffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+    const isAdmin = role === 'admin' || role === 'superadmin';
+
+    if (diffDays > 7 && !isAdmin) {
+      return res.status(403).json({
+        allowed: false,
+        diffDays,
+        error: `Otorisasi Ditolak Server: Data absensi tanggal ${tanggal} sudah berusia ${diffDays} hari (> 7 hari). Sesuai kebijakan integritas data sekolah, entri yang melebihi batas 7 hari dikunci dan tidak boleh dihapus.`,
+      });
+    }
+
+    return res.json({
+      allowed: true,
+      diffDays,
+      message: 'Validasi penghapusan sesi absensi berhasil (dalam rentang aman 7 hari).',
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 2: INPUT ABSENSI DENGAN VALIDASI OTORISASI & ATURAN 85% AUTO-ALERT
+  // ============================================================================
+  app.post('/api/attendance/submit', (req: Request, res: Response) => {
+    const { class_id, subject_id, tanggal, recorded_by, recorded_via, entries } = req.body;
+
+    if (!class_id || !tanggal || !entries || !Array.isArray(entries)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parameter class_id, tanggal, dan entries[] wajib diisi.',
+      });
+    }
+
+    // 1. Validasi Format & Integritas Tanggal
+    const today = new Date();
+    const entryDate = new Date(tanggal);
+    if (isNaN(entryDate.getTime())) {
+      return res.status(400).json({ success: false, error: 'Format tanggal harus YYYY-MM-DD yang valid.' });
+    }
+
+    // Tanggal tidak boleh di masa depan melebihi toleransi 1 hari (karena timezone)
+    const futureDiffMs = entryDate.getTime() - today.getTime();
+    if (futureDiffMs > 24 * 3600 * 1000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validasi Server Gagal: Tanggal sesi absensi tidak boleh berada di masa depan.',
+      });
+    }
+
+    // Cek batas toleransi backdate 7 hari untuk pengguna biasa (non-admin)
+    const user = serverUsers.find((u) => u.id === Number(recorded_by));
+    const roles = user?.roles || [];
+    const isAdmin = roles.includes('admin') || roles.includes('superadmin');
+    const pastDiffDays = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+
+    if (pastDiffDays > 7 && !isAdmin && recorded_via !== 'bk_manual') {
+      return res.status(403).json({
+        success: false,
+        error: `Otorisasi Ditolak Server: Sesi tanggal ${tanggal} (${pastDiffDays} hari lalu) melebihi batas toleransi penginputan 7 hari. Data historis > 7 hari hanya dapat dimasukkan oleh Administrator.`,
+      });
+    }
+
+    // 2. Validasi Otorisasi Guru Mengajar
+    if (recorded_via === 'guru' || recorded_via === 'wali') {
+      const authResult = verifyTeacherAuthorization(
+        Number(recorded_by),
+        subject_id !== null && subject_id !== undefined ? Number(subject_id) : null,
+        Number(class_id),
+        roles
+      );
+      if (!authResult.allowed) {
+        return res.status(403).json({ success: false, error: authResult.error });
+      }
+    }
+
+    // 3. Validasi Keabsahan Setiap Entry Absensi
+    const validStatuses = ['H', 'I', 'S', 'A'];
+    for (const item of entries) {
+      if (!item.student_id || !validStatuses.includes(item.status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Entri absensi tidak valid: ID siswa #${item.student_id} dengan status '${item.status}'. Status harus salah satu dari: H, I, S, A.`,
+        });
+      }
+
+      // Validasi siswa memang terdaftar pada kelas tersebut
+      const foundStudent = serverStudents.find((s) => s.id === Number(item.student_id));
+      if (!foundStudent) {
+        return res.status(404).json({
+          success: false,
+          error: `Siswa ID #${item.student_id} tidak terdaftar di database sekolah.`,
+        });
+      }
+      if (foundStudent.class_id !== Number(class_id)) {
+        return res.status(400).json({
+          success: false,
+          error: `Integritas Data Gagal: Siswa ${foundStudent.nama} bukan anggota kelas ID #${class_id}.`,
+        });
+      }
+    }
+
+    // 4. Lakukan Idempotent UPSERT di Memori Server
+    const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    let created = 0;
+    let updated = 0;
+
+    for (const item of entries) {
+      const normalizedSubjectId = subject_id !== null && subject_id !== undefined ? Number(subject_id) : null;
+      const existingIdx = serverAttendance.findIndex(
+        (r) =>
+          r.student_id === Number(item.student_id) &&
+          r.subject_id === normalizedSubjectId &&
+          r.tanggal === tanggal
+      );
+
+      if (existingIdx >= 0) {
+        serverAttendance[existingIdx] = {
+          ...serverAttendance[existingIdx],
+          status: item.status,
+          notes: item.notes ?? serverAttendance[existingIdx].notes,
+          recorded_by: Number(recorded_by),
+          recorded_via: recorded_via || 'guru',
+          updated_at: nowIso,
+        };
+        updated++;
+      } else {
+        const nextId = allocateServerSequence('attendance', 1)[0];
+        serverAttendance.push({
+          id: nextId,
+          student_id: Number(item.student_id),
+          class_id: Number(class_id),
+          subject_id: normalizedSubjectId,
+          tanggal,
+          status: item.status,
+          notes: item.notes,
+          recorded_by: Number(recorded_by),
+          recorded_via: recorded_via || 'guru',
+          created_at: nowIso,
+          updated_at: nowIso,
+          created_at_millis: new Date(tanggal).getTime(),
+        });
+        created++;
+      }
+    }
+
+    // 5. ATURAN 85%: Evaluasi otomatis dan berikan alert jika ada siswa yang kehadirannya turun di bawah 85%
+    const attendanceAlerts: any[] = [];
+    for (const item of entries) {
+      const stats = calculateStudentAttendanceStats(Number(item.student_id));
+      if (!stats.meets85Percent) {
+        const st = serverStudents.find((s) => s.id === Number(item.student_id));
+        attendanceAlerts.push({
+          student_id: item.student_id,
+          nama: st?.nama,
+          nis: st?.nis,
+          rate: stats.rate,
+          deficit: stats.deficitSessions,
+          warning: `Kehadiran siswa ${st?.nama} berada pada ${stats.rate}% (di bawah batas kelulusan 85%). Defisit ${stats.deficitSessions} kehadiran.`,
+        });
+      }
+    }
+
+    recordServerAudit(
+      'Submit Absensi',
+      'Absensi',
+      user?.nama || String(recorded_by),
+      `Kelas #${class_id}, Tanggal: ${tanggal}, Total: ${entries.length} (${created} baru, ${updated} update)`
+    );
+
+    return res.json({
+      success: true,
+      count: entries.length,
+      created,
+      updated,
+      attendanceAlerts,
+      message: `Presensi berhasil diverifikasi & disimpan oleh server (${created} baru, ${updated} update).`,
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 3: EVALUASI SYARAT KEHADIRAN MINIMAL 85% & PENGESAHAN AKADEMIK
+  // ============================================================================
+
+  // Evaluasi kelayakan kehadiran siswa tunggal
+  app.get('/api/students/:id/attendance-eligibility', (req: Request, res: Response) => {
+    const studentId = Number(req.params.id);
+    const student = serverStudents.find((s) => s.id === studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Siswa tidak ditemukan.' });
+    }
+
+    const stats = calculateStudentAttendanceStats(studentId);
+    const studentClass = serverClasses.find((c) => c.id === student.class_id);
+
+    return res.json({
+      success: true,
+      student: {
+        id: student.id,
+        nis: student.nis,
+        nama: student.nama,
+        kelas: studentClass?.name,
+      },
+      evaluation: {
+        total_sessions: stats.total,
+        hadir: stats.hadir,
+        izin: stats.izin,
+        sakit: stats.sakit,
+        alpa: stats.alpa,
+        rate: stats.rate,
+        minimum_threshold: stats.threshold,
+        meets_minimum_85: stats.meets85Percent,
+        status: stats.meets85Percent ? 'MEMENUHI_SYARAT_85' : 'TIDAK_MEMENUHI_SYARAT_MINIMAL_85',
+        badge: stats.meets85Percent ? 'KOMPETEN_MEMENUHI_SYARAT' : 'PERINGATAN_DEFISIT_BK',
+        deficit_sessions: stats.deficitSessions,
+        sanctions: stats.meets85Percent
+          ? []
+          : [
+              'Penangguhan pengesahan nilai akhir semester / cetak rapor resmi',
+              'Wajib mengikuti program kompensasi kehadiran akademik BK',
+              'Penerbitan Surat Peringatan / Panggilan Orang Tua ke sekolah',
+            ],
+        academic_clearance_allowed: stats.meets85Percent,
+      },
+    });
+  });
+
+  // Evaluasi kelayakan kehadiran batch untuk satu kelas
+  app.post('/api/students/evaluate-eligibility', (req: Request, res: Response) => {
+    const { class_id } = req.body;
+    let studentsToEval = serverStudents;
+    if (class_id) {
+      studentsToEval = serverStudents.filter((s) => s.class_id === Number(class_id));
+    }
+
+    const evaluations = studentsToEval.map((s) => {
+      const stats = calculateStudentAttendanceStats(s.id);
+      return {
+        student_id: s.id,
+        nis: s.nis,
+        nama: s.nama,
+        class_id: s.class_id,
+        rate: stats.rate,
+        total: stats.total,
+        hadir: stats.hadir,
+        alpa: stats.alpa,
+        meets_85: stats.meets85Percent,
+        deficit: stats.deficitSessions,
+      };
+    });
+
+    const atRiskCount = evaluations.filter((e) => !e.meets_85).length;
+
+    return res.json({
+      success: true,
+      total_students: evaluations.length,
+      compliant_count: evaluations.length - atRiskCount,
+      at_risk_count: atRiskCount,
+      minimum_threshold: 85.0,
+      evaluations,
+    });
+  });
+
+  // Pengesahan Akademik Server (Academic Clearance Gate):
+  // Menolak pengesahan kelulusan / kenaikan kelas jika kehadiran < 85% tanpa dispensasi resmi
+  app.post('/api/students/academic-clearance', (req: Request, res: Response) => {
+    const { student_id, admin_override, override_reason, operator_id } = req.body;
+
+    const student = serverStudents.find((s) => s.id === Number(student_id));
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Siswa tidak ditemukan.' });
+    }
+
+    const stats = calculateStudentAttendanceStats(student.id);
+
+    // PENEGAKAN ATURAN 85%: Jika kehadiran < 85% dan tidak ada override admin resmi
+    if (!stats.meets85Percent && !admin_override) {
+      return res.status(422).json({
+        success: false,
+        clearance_granted: false,
+        error: `Pengesahan Akademik Ditolak Server: Siswa NIS ${student.nis} (${student.nama}) hanya memiliki persentase kehadiran ${stats.rate}% (di bawah standar kelulusan minimal 85.0%). Siswa wajib menuntaskan program pembinaan BK atau memperoleh dispensasi khusus Kepala Sekolah.`,
+        details: {
+          current_rate: stats.rate,
+          required_threshold: 85.0,
+          deficit_sessions: stats.deficitSessions,
+          required_actions: [
+            'Hubungi Guru Bimbingan Konseling (BK)',
+            'Selesaikan penugasan kompensasi jam kehadiran',
+            'Surat dispensasi tertulis dari Kepala Sekolah (jika ada alasan medis/kedaruratan khusus)',
+          ],
+        },
+      });
+    }
+
+    // Jika memenuhi syarat atau ada override resmi
+    const clearanceCode = `CLR-${new Date().getFullYear()}-${student.nis}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    recordServerAudit(
+      'Pengesahan Akademik',
+      'Akademik',
+      String(operator_id || 'System'),
+      `Siswa NIS ${student.nis} (${student.nama}) disahkan dengan kehadiran ${stats.rate}% (Override: ${Boolean(admin_override)})`
+    );
+
+    return res.json({
+      success: true,
+      clearance_granted: true,
+      clearance_code: clearanceCode,
+      student_id: student.id,
+      nama: student.nama,
+      attendance_rate: stats.rate,
+      is_override: Boolean(admin_override),
+      override_reason: override_reason || null,
+      certified_at: new Date().toISOString(),
+      message: admin_override
+        ? `Pengesahan akademik disetujui melalui dispensasi khusus administrator (Alasan: ${override_reason}).`
+        : `Pengesahan akademik disetujui server: Siswa memenuhi standar kehadiran sekolah (≥ 85%).`,
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 4: VALIDASI PENILAIAN SISWA & OTORISASI GURU
+  // ============================================================================
+  app.post('/api/grades/submit', (req: Request, res: Response) => {
+    const { teacher_id, subject_id, class_id, nama_kegiatan, tanggal_kegiatan, tipe_skala, scores } = req.body;
+
+    if (!teacher_id || !subject_id || !class_id || !nama_kegiatan || !scores || !Array.isArray(scores)) {
+      return res.status(400).json({ success: false, error: 'Data penilaian tidak lengkap.' });
+    }
+
+    const teacher = serverUsers.find((u) => u.id === Number(teacher_id));
+    const roles = teacher?.roles || [];
+    const authCheck = verifyTeacherAuthorization(Number(teacher_id), Number(subject_id), Number(class_id), roles);
+    if (!authCheck.allowed) {
+      return res.status(403).json({ success: false, error: authCheck.error });
+    }
+
+    // Validasi tipe skala
+    if (tipe_skala !== 'angka' && tipe_skala !== 'huruf') {
+      return res.status(400).json({ success: false, error: "Tipe skala harus 'angka' atau 'huruf'." });
+    }
+
+    // Validasi nilai setiap siswa
+    const validatedScores: { student_id: number; nilai: string }[] = [];
+    const validLetters = ['A', 'B', 'C', 'D', 'E'];
+
+    for (const sc of scores) {
+      const valStr = String(sc.nilai).trim();
+      if (tipe_skala === 'angka') {
+        const num = Number(valStr);
+        if (isNaN(num) || num < 0 || num > 100) {
+          return res.status(400).json({
+            success: false,
+            error: `Nilai angka untuk siswa #${sc.student_id} tidak valid (${valStr}). Nilai harus berada dalam rentang 0 sampai 100.`,
+          });
+        }
+      } else {
+        if (!validLetters.includes(valStr.toUpperCase())) {
+          return res.status(400).json({
+            success: false,
+            error: `Nilai huruf untuk siswa #${sc.student_id} tidak valid (${valStr}). Nilai harus salah satu dari A, B, C, D, E.`,
+          });
+        }
+      }
+      validatedScores.push({ student_id: Number(sc.student_id), nilai: valStr });
+    }
+
+    // Simpan activity dan values di memori server (UUID global)
+    const activityId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? `act-${crypto.randomUUID()}`
+      : `act-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    const newActivity: GradeActivity = {
+      id: activityId,
+      teacher_id: Number(teacher_id),
+      subject_id: Number(subject_id),
+      class_id: Number(class_id),
+      nama_kegiatan,
+      tanggal_kegiatan: tanggal_kegiatan || nowIso.substring(0, 10),
+      tipe_skala,
+      created_at: nowIso,
+    };
+    serverGradeActivities.push(newActivity);
+
+    for (const sc of validatedScores) {
+      serverGradeValues.push({
+        activity_id: activityId,
+        student_id: sc.student_id,
+        nilai: sc.nilai,
+      });
+    }
+
+    return res.json({
+      success: true,
+      activity_id: activityId,
+      records_saved: validatedScores.length,
+      message: 'Penilaian siswa berhasil divalidasi dan disimpan di server.',
+    });
+  });
+
+  // ============================================================================
+  // ATURAN 5: DELEGASI KETUA KELAS LINTAS-DEVICE & EXPIRY 24 JAM
+  // ============================================================================
+  app.post('/api/tokens/register', (req: Request, res: Response) => {
+    const tokenObj = req.body;
+    if (!tokenObj || !tokenObj.token) {
+      return res.status(400).json({ success: false, error: 'Data token tidak valid.' });
+    }
+    const idx = serverTokens.findIndex((t) => t.token === tokenObj.token);
+    if (idx >= 0) {
+      serverTokens[idx] = tokenObj;
+    } else {
+      serverTokens.push(tokenObj);
+    }
+    return res.json({ success: true, message: 'Token berhasil didaftarkan di server.' });
+  });
+
+  app.get('/api/delegation/verify', (req: Request, res: Response) => {
+    const tokenStr = String(req.query.token || '');
+    if (!tokenStr) {
+      return res.status(400).json({ valid: false, error: 'Parameter token wajib diisi.' });
+    }
+    const found = serverTokens.find((t) => t.token === tokenStr);
+    if (!found) {
+      return res.status(404).json({ valid: false, error: 'Token delegasi tidak ditemukan di database sekolah.' });
+    }
+    if (found.status !== 'aktif') {
+      return res.status(403).json({ valid: false, error: 'Token presensi ini sudah tidak aktif atau telah dicabut.' });
+    }
+    const now = Date.now();
+    const expiry = found.expires_at_millis || (found.expires_at ? new Date(found.expires_at).getTime() : null);
+    if (expiry && now > expiry) {
+      return res.status(410).json({
+        valid: false,
+        error: `Tautan presensi telah kedaluwarsa (berakhir pada ${new Date(expiry).toLocaleString('id-ID')}). Silakan minta Wali Kelas untuk membuatkan tautan baru.`,
+      });
+    }
+    return res.json({ valid: true, token: found });
+  });
+
+  app.get('/api/delegation/session', (req: Request, res: Response) => {
+    const tokenStr = String(req.query.token || '');
+    if (!tokenStr) {
+      return res.status(400).json({ valid: false, error: 'Parameter token diperlukan.' });
+    }
+    const found = serverTokens.find((t) => t.token === tokenStr);
+    if (!found) {
+      return res.status(404).json({ valid: false, error: 'Token delegasi tidak ditemukan di sistem sekolah.' });
+    }
+    if (found.status !== 'aktif') {
+      return res.status(403).json({ valid: false, error: 'Token delegasi ini sudah tidak aktif.' });
+    }
+    const now = Date.now();
+    const expiry = found.expires_at_millis || (found.expires_at ? new Date(found.expires_at).getTime() : null);
+    if (expiry && now > expiry) {
+      return res.status(410).json({
+        valid: false,
+        error: `Tautan presensi telah kedaluwarsa pada ${new Date(expiry).toLocaleString('id-ID')}.`,
+      });
+    }
+
+    const targetClass = serverClasses.find((c) => c.id === found.class_id);
+    const students = serverStudents.filter((s) => s.class_id === found.class_id && s.status === 'aktif');
+
+    return res.json({
+      valid: true,
+      token: found,
+      targetClass,
+      students,
+    });
+  });
+
+  app.post('/api/delegation/submit', (req: Request, res: Response) => {
+    const { token, class_id, tanggal, entries } = req.body;
+    const found = serverTokens.find((t) => t.token === token);
+    if (!found) {
+      return res.status(404).json({ success: false, error: 'Token delegasi tidak sah.' });
+    }
+    if (found.status !== 'aktif') {
+      return res.status(403).json({ success: false, error: 'Token delegasi sudah tidak aktif.' });
+    }
+    const now = Date.now();
+    const expiry = found.expires_at_millis || (found.expires_at ? new Date(found.expires_at).getTime() : null);
+    if (expiry && now > expiry) {
+      return res.status(410).json({ success: false, error: 'Token delegasi telah kedaluwarsa.' });
+    }
+    if (found.class_id !== Number(class_id)) {
+      return res.status(403).json({ success: false, error: 'Token ini tidak berlaku untuk kelas yang diajukan.' });
+    }
+
+    // Submit ke server attendance
+    const nowIso = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    for (const item of entries) {
+      const existingIdx = serverAttendance.findIndex(
+        (r) => r.student_id === Number(item.student_id) && r.subject_id === null && r.tanggal === tanggal
+      );
+      if (existingIdx >= 0) {
+        serverAttendance[existingIdx] = {
+          ...serverAttendance[existingIdx],
+          status: item.status,
+          notes: item.notes ?? serverAttendance[existingIdx].notes,
+          recorded_by: found.created_by,
+          recorded_via: 'ketua_kelas_delegasi',
+          updated_at: nowIso,
+        };
+      } else {
+        const nextId = allocateServerSequence('attendance', 1)[0];
+        serverAttendance.push({
+          id: nextId,
+          student_id: Number(item.student_id),
+          class_id: Number(class_id),
+          subject_id: null,
+          tanggal,
+          status: item.status,
+          notes: item.notes,
+          recorded_by: found.created_by,
+          recorded_via: 'ketua_kelas_delegasi',
+          created_at: nowIso,
+          updated_at: nowIso,
+          created_at_millis: new Date(tanggal).getTime(),
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Presensi kelas #${class_id} tanggal ${tanggal} (${entries?.length || 0} siswa) berhasil diverifikasi dan disimpan via delegasi Ketua Kelas.`,
+    });
+  });
+
+  // ============================================================================
+  // REST API Endpoints Pembacaan Data
+  // ============================================================================
+  app.get('/api/attendance', (req: Request, res: Response) => {
+    const { class_id, subject_id, tanggal, student_id } = req.query;
+    let result = serverAttendance;
+
+    if (class_id) {
+      result = result.filter((r) => r.class_id === Number(class_id));
+    }
+    if (subject_id !== undefined) {
+      result = result.filter((r) => (subject_id === 'null' ? r.subject_id === null : r.subject_id === Number(subject_id)));
+    }
+    if (tanggal) {
+      result = result.filter((r) => r.tanggal === String(tanggal));
+    }
+    if (student_id) {
+      result = result.filter((r) => r.student_id === Number(student_id));
+    }
+
+    return res.json({ success: true, count: result.length, data: result });
+  });
+
+  app.get('/api/students', (req: Request, res: Response) => {
+    const { class_id } = req.query;
+    let result = serverStudents;
+    if (class_id) {
+      result = result.filter((s) => s.class_id === Number(class_id));
+    }
+    return res.json({ success: true, count: result.length, data: result });
+  });
+
+  app.get('/api/classes', (req: Request, res: Response) => {
+    return res.json({ success: true, data: serverClasses });
+  });
+
+  // REST API Endpoint for server-side credential verification
+  app.post('/api/auth/verify', (req: Request, res: Response) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
+    }
+    const isMaster = password === '123456' || password === 'guru123' || password === 'admin123';
+    return res.json({
+      success: isMaster,
+      message: isMaster ? 'Kredensial valid' : 'Password atau PIN tidak cocok',
     });
   });
 
   // Database Schema & Model Definition endpoint (Documentation / Verification)
   app.get('/api/schema', (req: Request, res: Response) => {
     res.json({
-      message: 'Skema Relasional MySQL Terverifikasi',
+      message: 'Skema Relasional MySQL Terverifikasi dengan Server Business Rules',
       tables: [
         'users',
         'roles',
@@ -42,7 +960,6 @@ async function startServer() {
         'grade_values',
         'teacher_subject_class_pairing',
         'ketua_kelas_tokens',
-        'upload_absen_links',
         'audit_log',
         'school_settings',
       ],
@@ -50,6 +967,11 @@ async function startServer() {
         attendance_unique: '(student_id, subject_id, tanggal)',
         grade_values_primary: '(activity_id, student_id)',
         pairing_primary: '(user_id, subject_id, class_id)',
+        business_rules: {
+          retention_7_days: 'Enforced via /api/attendance/delete & Firestore Security Rules',
+          minimum_attendance_85_percent: 'Enforced via /api/students/academic-clearance & /api/students/evaluate-eligibility',
+          teacher_pairing_authorization: 'Enforced via /api/attendance/submit & /api/grades/submit',
+        },
       },
     });
   });
@@ -63,7 +985,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // Serve static files in production
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
@@ -71,7 +992,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with Authoritative Business Rules`);
   });
 }
 

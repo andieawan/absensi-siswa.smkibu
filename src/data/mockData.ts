@@ -31,6 +31,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 1,
     username: 'pak.budi',
+    password_hash: '$2b$12$eX4mple.budi_admin123.8',
     nama: 'Budi Santoso, S.Pd., M.Kom.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -43,6 +44,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 2,
     username: 'ibu.siti',
+    password_hash: '$2b$12$eX4mple.siti_guru123.7',
     nama: 'Siti Aminah, S.Pd.',
     kelas_wali_id: 1, // Wali Kelas XI DKV 1
     foto_profil_url: null,
@@ -55,6 +57,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 3,
     username: 'pak.hendra',
+    password_hash: '$2b$12$eX4mple.hendra_guru123.7',
     nama: 'Hendra Pratama, S.Si.',
     kelas_wali_id: 2, // Wali Kelas X RPL 1
     foto_profil_url: null,
@@ -67,6 +70,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 4,
     username: 'bu.ratna',
+    password_hash: '$2b$12$eX4mple.ratna_kepsek123.9',
     nama: 'Dra. Ratna Kusuma, M.Pd.',
     kelas_wali_id: null,
     foto_profil_url: null,
@@ -79,6 +83,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 5,
     username: 'bu.maya',
+    password_hash: '$2b$12$eX4mple.maya_bk123.5',
     nama: 'Maya Rosita, S.Psi.',
     kelas_wali_id: null,
     foto_profil_url: null,
