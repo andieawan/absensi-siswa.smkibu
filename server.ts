@@ -1206,6 +1206,13 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[go_absen_siswa] Server running on http://0.0.0.0:${PORT} with SQLite + Authoritative Business Rules`);
   });
+
+  // Housekeeping: sapu baris sesi kedaluwarsa yang tidak pernah dipakai lagi
+  // (login baru sudah menyapu di server/db.ts, ini jaring pengaman tambahan
+  // untuk server yang jarang menerima login baru tapi tetap hidup lama).
+  setInterval(() => {
+    Repo.sessions.pruneExpired();
+  }, 60 * 60 * 1000).unref();
 }
 
 startServer().catch((err) => {

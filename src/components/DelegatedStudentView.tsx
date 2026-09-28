@@ -29,6 +29,10 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
     Record<number, { status: AttendanceStatus; notes: string }>
   >({});
   const [submitted, setSubmitted] = useState<boolean>(false);
+  // true jika server SEMPAT dihubungi dan mengonfirmasi presensi tersimpan;
+  // false jika server tidak terjangkau (offline) sehingga hanya tersimpan lokal
+  // dan BELUM pasti sampai ke database sekolah.
+  const [submitConfirmedByServer, setSubmitConfirmedByServer] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Verifikasi token lintas-device (Firestore -> Server API -> Local Storage fallback)
@@ -209,7 +213,11 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
     }));
 
     // Submit ke server lebih dulu: server memvalidasi token, tanggal, status, dan
-    // keanggotaan siswa. Kalau server menolak, jangan tampilkan "berhasil".
+    // keanggotaan siswa. Kalau server menolak (respons diterima tapi tidak ok),
+    // jangan tampilkan "berhasil". Kalau server tidak terjangkau sama sekali
+    // (offline/error jaringan), tetap simpan lokal tapi beri tahu penggunanya
+    // dengan jujur bahwa presensi BELUM terkonfirmasi tersimpan di server.
+    let confirmedByServer = false;
     try {
       const res = await fetch('/api/delegation/submit', {
         method: 'POST',
@@ -227,8 +235,9 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
         setIsSubmitting(false);
         return;
       }
+      confirmedByServer = true;
     } catch (err) {
-      console.warn('[DelegatedStudentView] Server submit notice:', err);
+      console.warn('[DelegatedStudentView] Server tidak terjangkau, presensi belum terkonfirmasi:', err);
     }
 
     // Simpan ke storage lokal
@@ -246,6 +255,7 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
     }
 
     setIsSubmitting(false);
+    setSubmitConfirmedByServer(confirmedByServer);
     setSubmitted(true);
   };
 
@@ -313,21 +323,39 @@ export const DelegatedStudentView: React.FC<DelegatedStudentViewProps> = ({
       </div>
 
       {submitted ? (
-        <div className="p-8 bg-white border border-emerald-200 rounded-xl text-center space-y-3 shadow-xs">
-          <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-          <h2 className="text-base font-bold text-slate-900">Presensi Berhasil Dikirimkan!</h2>
-          <p className="text-xs text-slate-600 max-w-md mx-auto">
-            Terima kasih! Data absensi harian kelas {targetClass.name} untuk tanggal {selectedDate} telah tersimpan aman di database sekolah dan Cloud Firestore.
-          </p>
-          <div className="pt-2">
-            <button
-              onClick={() => setSubmitted(false)}
-              className="px-4 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              Ubah atau Periksa Kembali
-            </button>
+        submitConfirmedByServer ? (
+          <div className="p-8 bg-white border border-emerald-200 rounded-xl text-center space-y-3 shadow-xs">
+            <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
+            <h2 className="text-base font-bold text-slate-900">Presensi Berhasil Dikirimkan!</h2>
+            <p className="text-xs text-slate-600 max-w-md mx-auto">
+              Terima kasih! Data absensi harian kelas {targetClass.name} untuk tanggal {selectedDate} telah tersimpan aman di database sekolah dan Cloud Firestore.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setSubmitted(false)}
+                className="px-4 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                Ubah atau Periksa Kembali
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="p-8 bg-white border border-amber-200 rounded-xl text-center space-y-3 shadow-xs">
+            <ShieldAlert className="w-12 h-12 text-amber-600 mx-auto" />
+            <h2 className="text-base font-bold text-slate-900">Tersimpan di Perangkat Ini — Belum Terkonfirmasi Server</h2>
+            <p className="text-xs text-slate-600 max-w-md mx-auto">
+              Server sekolah tidak dapat dihubungi saat presensi ini dikirim (kemungkinan koneksi internet terputus). Data absensi harian kelas {targetClass.name} tanggal {selectedDate} sudah tersimpan sementara di perangkat ini, tapi <strong>belum tentu</strong> masuk ke database sekolah. Pastikan tautan ini dibuka ulang saat koneksi kembali normal, atau laporkan ke Wali Kelas untuk memastikan datanya tersinkron.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setSubmitted(false)}
+                className="px-4 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                Ubah atau Periksa Kembali
+              </button>
+            </div>
+          </div>
+        )
       ) : (
         <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
           {/* Tampilan kartu untuk mobile/tablet: tombol status berukuran 44x44 agar nyaman disentuh */}

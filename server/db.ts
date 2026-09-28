@@ -799,6 +799,10 @@ export const Repo = {
         new Date().toISOString(),
         expiresAtMillis
       );
+      // Sapu baris sesi kedaluwarsa milik pengguna lain sambil kita sudah menulis ke
+      // tabel ini — token yang tidak pernah dipakai ulang tidak akan menumpuk selamanya
+      // menunggu findValid() dipanggil dengan token itu (yang tidak pernah terjadi).
+      db.prepare('DELETE FROM sessions WHERE expires_at_millis < ?').run(Date.now());
       return { token, expiresAtMillis };
     },
     findValid(token: string): { userId: number } | null {
@@ -815,6 +819,10 @@ export const Repo = {
     },
     destroy(token: string) {
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    },
+    pruneExpired(): number {
+      const info = db.prepare('DELETE FROM sessions WHERE expires_at_millis < ?').run(Date.now());
+      return Number(info.changes || 0);
     },
   },
   auditLog: {
