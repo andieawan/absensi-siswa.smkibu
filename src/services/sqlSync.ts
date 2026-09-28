@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { authService } from './auth';
 
 /**
  * Sinkronisasi Dua Arah dengan Backend SQLite (server/db.ts, lewat REST API server.ts)
@@ -9,12 +10,27 @@ import { storage } from './storage';
  * untuk semua user yang login lokal (username/PIN) di perangkat manapun. Inilah jalur
  * sinkronisasi lintas-perangkat utama untuk sebagian besar guru.
  *
+ * Endpoint /api/sync/pull & /api/sync/push mensyaratkan token sesi server (Bearer
+ * token) yang diterbitkan saat login (lihat services/auth.ts -> loginToServer).
+ * Tanpa token yang valid, server menolak dengan 401/403 — fungsi di bawah ini
+ * menangani penolakan itu dengan gagal secara halus (tidak melempar ke pemanggil).
+ *
  * Pola: pull data terbaru dari server saat aplikasi dibuka (hidrasi), lalu push
  * data master lokal ke server agar server selalu punya salinan terbaru untuk
  * device lain. password_hash TIDAK PERNAH ikut dikirim di respons GET server,
  * dan saat push, field password_hash TETAP dikirim (server butuh hash untuk
  * verifikasi login) tapi tidak pernah ditampilkan balik ke client manapun.
+ * Push data master (classes/subjects/students/users/pairings/settings) hanya
+ * diterima server dari akun Administrator (lihat requireAdmin di server.ts).
  */
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = authService.getAuthToken();
+  return {
+    ...(extra || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 export async function testSqlConnection(): Promise<boolean> {
   try {
@@ -34,7 +50,7 @@ export async function syncSqlToStorage(): Promise<{
   counts: { students: number; attendance: number; users: number; classes: number; tokens: number };
 }> {
   try {
-    const res = await fetch('/api/sync/pull');
+    const res = await fetch('/api/sync/pull', { headers: authHeaders() });
     if (!res.ok) throw new Error(`Server merespons status ${res.status}`);
     const body = await res.json();
     if (!body.success || !body.data) throw new Error('Payload sinkronisasi tidak valid.');
@@ -117,6 +133,13 @@ export async function syncSqlToStorage(): Promise<{
  * Push: LocalStorage -> Server SQLite (rekonsiliasi data master)
  * Absensi, token, dan nilai TIDAK dikirim di sini karena sudah punya jalur
  * sinkronisasi tersendiri (submit/delete/register langsung ke server saat terjadi).
+ *
+ * Server HANYA menerima push ini dari akun Administrator/Superadmin (lihat
+ * requireAdmin di server.ts) — mengubah data master (termasuk roster akun &
+ * roles) bukan aksi yang boleh dilakukan sembarang device. Untuk user biasa
+ * (guru non-admin), fungsi ini sengaja dilewati di sisi client (lihat cek
+ * role sebelum memanggil ini di initializeSqlBidirectionalSync) supaya tidak
+ * memicu request yang pasti ditolak 403 setiap kali sinkronisasi berjalan.
  */
 export async function syncStorageToSql(): Promise<boolean> {
   try {
@@ -130,16 +153,26 @@ export async function syncStorageToSql(): Promise<boolean> {
     };
     const res = await fetch('/api/sync/push', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Server merespons status ${res.status}`);
+    const body = await res.json().catch(() => null);
+    if (body?.warnings?.length) {
+      console.warn('[SQL] Server memberi peringatan saat sinkronisasi:', body.warnings);
+    }
     console.log('[SQL] Sinkronisasi data master LocalStorage -> Server SQLite sukses.');
     return true;
   } catch (err) {
     console.warn('[SQL] Kendala sinkronisasi Storage -> Server SQLite:', err);
     return false;
   }
+}
+
+function isCurrentUserAdmin(): boolean {
+  const current = storage.getCurrentUser();
+  const roles = current?.roles || [];
+  return roles.includes('admin') || roles.includes('superadmin');
 }
 
 /**
@@ -155,8 +188,12 @@ export async function initializeSqlBidirectionalSync(): Promise<{
   try {
     const pullResult = await syncSqlToStorage();
 
+    // Push data master hanya boleh dilakukan Administrator/Superadmin — server
+    // akan menolak (403) push dari akun lain, jadi jangan repot memanggilnya.
+    const canPush = isCurrentUserAdmin();
+
     if (!pullResult.pulled || pullResult.counts.students === 0) {
-      await syncStorageToSql();
+      if (canPush) await syncStorageToSql();
       return {
         success: true,
         mode: 'seeded_to_server',
@@ -167,7 +204,7 @@ export async function initializeSqlBidirectionalSync(): Promise<{
       };
     }
 
-    await syncStorageToSql();
+    if (canPush) await syncStorageToSql();
 
     return {
       success: true,

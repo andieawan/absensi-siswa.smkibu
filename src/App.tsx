@@ -95,9 +95,14 @@ export default function App() {
     }
   };
 
+  // /api/sync/pull & /api/sync/push sekarang butuh token sesi server (lihat
+  // server.ts requireAuth/requireAdmin), jadi sinkronisasi baru dijalankan
+  // SETELAH user login (bukan lagi saat aplikasi baru dibuka / belum login).
   useEffect(() => {
-    runSqlSync();
-  }, []);
+    if (isAuthenticated) {
+      runSqlSync();
+    }
+  }, [isAuthenticated]);
 
   // Firestore tetap tersedia sebagai jalur sinkronisasi tambahan khusus untuk
   // user yang sign-in dengan akun Google Workspace (mis. untuk fitur Docs/Sheets).
@@ -146,6 +151,8 @@ export default function App() {
     // Credentials successfully verified
     const user = storage.setCurrentUser(userId);
     authService.setAuthenticatedUser(user);
+    // Perbarui token sesi server untuk akun yang baru dipilih (best-effort).
+    await authService.loginToServer(user.username, passwordAttempt);
     setCurrentUser(user);
     setPendingSwitchUserId(null);
 

@@ -120,6 +120,44 @@ async function verifyPasswordAgainstHash(plain: string, stored: string | undefin
   return recomputed === stored;
 }
 
+// ============================================================================
+// Sesi Server (Bearer Token) — melindungi endpoint yang membaca/menulis
+// seluruh data sekolah sekaligus (mis. /api/sync/pull & /api/sync/push).
+// Token diterbitkan lewat POST /api/auth/login setelah password terverifikasi.
+// ============================================================================
+function getBearerToken(req: Request): string | null {
+  const header = req.headers['authorization'];
+  if (typeof header !== 'string') return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
+function requireAuth(req: Request, res: Response): { id: number; nama: string; roles: string[] } | null {
+  const token = getBearerToken(req);
+  const session = token ? Repo.sessions.findValid(token) : null;
+  if (!session) {
+    res.status(401).json({ success: false, error: 'Sesi tidak sah atau sudah kedaluwarsa. Silakan login ulang.' });
+    return null;
+  }
+  const user = Repo.users.byId(session.userId);
+  if (!user || !user.is_active) {
+    res.status(401).json({ success: false, error: 'Akun tidak ditemukan atau nonaktif.' });
+    return null;
+  }
+  return { id: user.id, nama: user.nama, roles: user.roles || [] };
+}
+
+function requireAdmin(req: Request, res: Response): { id: number; nama: string; roles: string[] } | null {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  const isAdmin = user.roles.includes('admin') || user.roles.includes('superadmin');
+  if (!isAdmin) {
+    res.status(403).json({ success: false, error: 'Otorisasi Ditolak: aksi ini khusus Administrator.' });
+    return null;
+  }
+  return user;
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -828,23 +866,48 @@ async function startServer() {
   // Sinkronisasi Massal Data Master (Push dari Client -> Server SQLite)
   // Dipakai oleh src/services/sqlSync.ts untuk sinkronisasi dua arah.
   // ============================================================================
+  // Endpoint ini mengubah data master SELURUH sekolah (termasuk daftar akun &
+  // peran/roles pengguna) — WAJIB Administrator yang sudah login dengan token
+  // sesi yang sah. Tanpa ini, siapapun yang tahu URL server bisa mendaftarkan
+  // dirinya sebagai superadmin hanya dengan satu request POST.
   app.post('/api/sync/push', (req: Request, res: Response) => {
+    const actor = requireAdmin(req, res);
+    if (!actor) return; // requireAdmin sudah mengirim response 401/403
+
     const { classes, subjects, students, users, pairings, settings } = req.body || {};
     try {
       if (Array.isArray(classes)) for (const c of classes) Repo.classes.upsert(c);
       if (Array.isArray(subjects)) for (const s of subjects) Repo.subjects.upsert(s);
       if (Array.isArray(students)) for (const s of students) Repo.students.upsert(s);
       if (Array.isArray(users)) for (const u of users) Repo.users.upsert(u);
-      if (Array.isArray(pairings)) Repo.pairings.replaceAll(pairings);
+
+      let pairingWarning: string | undefined;
+      if (Array.isArray(pairings)) {
+        const result = Repo.pairings.replaceAll(pairings);
+        if (!result.applied) pairingWarning = result.reason;
+      }
+
       if (settings) Repo.settings.update(settings);
-      return res.json({ success: true, message: 'Sinkronisasi data master ke server berhasil.' });
+
+      recordAudit('Sinkronisasi Data Master', 'Sistem', actor.nama, 'Push data master dari device ke server SQLite');
+
+      return res.json({
+        success: true,
+        message: 'Sinkronisasi data master ke server berhasil.',
+        warnings: pairingWarning ? [pairingWarning] : undefined,
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Gagal menyimpan data ke server.' });
     }
   });
 
   // Snapshot lengkap untuk hidrasi awal device baru (Pull dari Server -> Client)
+  // Berisi seluruh data sekolah (siswa, absensi, nilai, roster guru), jadi
+  // WAJIB login (token sesi valid) — bukan endpoint publik.
   app.get('/api/sync/pull', (req: Request, res: Response) => {
+    const actor = requireAuth(req, res);
+    if (!actor) return;
+
     const safeUsers = Repo.users.all().map(({ password_hash, ...rest }) => rest);
     return res.json({
       success: true,
@@ -890,6 +953,37 @@ async function startServer() {
       success: isValid,
       message: isValid ? 'Kredensial valid' : 'Password atau PIN tidak cocok',
     });
+  });
+
+  // Login sungguhan yang menerbitkan token sesi server (Bearer token), dipakai
+  // untuk mengakses endpoint yang butuh otorisasi (mis. /api/sync/pull, /api/sync/push).
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
+    }
+    const user = Repo.users.all().find((u) => u.username === username);
+    if (!user || !user.is_active) {
+      return res.status(401).json({ success: false, error: 'Akun tidak ditemukan atau nonaktif.' });
+    }
+    const isValid = await verifyPasswordAgainstHash(String(password), user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: 'Password atau PIN tidak cocok.' });
+    }
+    const { token, expiresAtMillis } = Repo.sessions.create(user.id);
+    const { password_hash, ...safeUser } = user;
+    return res.json({
+      success: true,
+      token,
+      expires_at_millis: expiresAtMillis,
+      user: safeUser,
+    });
+  });
+
+  app.post('/api/auth/logout', (req: Request, res: Response) => {
+    const token = getBearerToken(req);
+    if (token) Repo.sessions.destroy(token);
+    return res.json({ success: true });
   });
 
   // Database Schema & Model Definition endpoint (Documentation / Verification)

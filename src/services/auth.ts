@@ -2,6 +2,7 @@ import { User } from '../types';
 import { storage } from './storage';
 
 const AUTH_STORAGE_KEY = 'go_absen_auth_session_v1';
+const AUTH_TOKEN_KEY = 'go_absen_auth_token_v1';
 
 // Format hash tersimpan: "sha256:<saltHex>:<hashHex>"
 // CATATAN: SHA-256+salt jauh lebih baik dari checksum sebelumnya, tapi tetap
@@ -44,11 +45,73 @@ export interface AuthSession {
   loggedInAt: string;
 }
 
+/**
+ * Token sesi server (Bearer token) — dibutuhkan untuk mengakses endpoint yang
+ * membaca/menulis seluruh data sekolah (/api/sync/pull, /api/sync/push).
+ * Server TIDAK PERNAH menerima plaintext password kecuali saat login, jadi
+ * token inilah yang dipakai ulang untuk request-request berikutnya.
+ */
+function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setAuthToken(token: string): void {
+  try {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch (e) {
+    console.error('Failed to store auth token', e);
+  }
+}
+
+function clearAuthToken(): void {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Login ke server (POST /api/auth/login) untuk memperoleh token sesi.
+ * Best-effort: kalau server tidak bisa dihubungi (offline/dev tanpa server),
+ * fungsi ini TIDAK melempar error — aplikasi tetap bisa jalan dengan sesi
+ * lokal saja, hanya saja sinkronisasi lintas-device tidak akan aktif sampai
+ * server bisa dihubungi lagi.
+ */
+async function loginToServer(username: string, password: string): Promise<boolean> {
+  try {
+    if (typeof fetch === 'undefined') return false;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data.success && data.token) {
+      setAuthToken(data.token);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('[Auth] Tidak bisa memperoleh token sesi server:', err);
+    return false;
+  }
+}
+
 export const authService = {
   /**
    * Hashes a raw password
    */
   hashPassword,
+
+  getAuthToken,
+  clearAuthToken,
+  loginToServer,
 
   /**
    * Verify credentials for a given user or user ID.
@@ -123,6 +186,13 @@ export const authService = {
     // Save session
     this.setAuthenticatedUser(user);
     storage.addAuditLog('Login Sistem', 'Sistem', user.nama, `Pengguna ${user.username} berhasil login`);
+
+    // Best-effort: perbarui token sesi server dengan password yang baru saja
+    // diverifikasi. Kalau server tidak terjangkau, login lokal tetap berhasil
+    // (ditunggu di sini supaya sinkronisasi yang berjalan setelah login sudah
+    // punya token yang valid, tapi kegagalannya tidak menggagalkan login).
+    await loginToServer(user.username, passwordAttempt.trim());
+
     return { success: true, user };
   },
 
@@ -177,8 +247,18 @@ export const authService = {
     if (currUser) {
       storage.addAuditLog('Logout Sistem', 'Sistem', currUser.nama, `Pengguna ${currUser.username} keluar dari sistem`);
     }
+    const token = getAuthToken();
+    if (token && typeof fetch !== 'undefined') {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {
+        // Best-effort: token server akan kedaluwarsa sendiri walau request ini gagal.
+      });
+    }
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      clearAuthToken();
     } catch (e) {
       console.error('Failed to clear session', e);
     }

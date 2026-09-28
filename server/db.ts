@@ -175,6 +175,16 @@ CREATE TABLE IF NOT EXISTS school_settings (
   last_backup_date TEXT,
   last_backup_status TEXT
 );
+
+-- Token sesi server-side (Bearer token), diterbitkan oleh POST /api/auth/login
+-- setelah verifikasi password berhasil. Dipakai untuk melindungi endpoint yang
+-- membaca/menulis seluruh data sekolah (mis. /api/sync/pull & /api/sync/push).
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at_millis INTEGER NOT NULL
+);
 `);
 
 // ============================================================================
@@ -563,12 +573,27 @@ export const Repo = {
         .get(userId, subjectId, classId);
       return !!row;
     },
-    replaceAll(pairings: TeacherPairing[]) {
+    replaceAll(pairings: TeacherPairing[]): { applied: boolean; reason?: string } {
+      // Guard: sebuah sync push yang mengirim array KOSONG padahal server sudah
+      // punya data TIDAK BOLEH menghapus semua pairing yang ada — itu hampir
+      // pasti berarti device pengirim belum ter-hidrasi penuh (localStorage-nya
+      // sendiri masih kosong/basi), bukan permintaan sungguhan untuk menghapus
+      // semua penugasan guru se-sekolah sekaligus.
+      const currentCount = (db.prepare('SELECT COUNT(*) as c FROM teacher_subject_class_pairing').get() as {
+        c: number;
+      }).c;
+      if (pairings.length === 0 && currentCount > 0) {
+        return {
+          applied: false,
+          reason: `Ditolak: payload pairing kosong tapi server sudah punya ${currentCount} data. Kemungkinan device belum sinkron penuh — sync ditolak untuk mencegah penghapusan massal tidak sengaja.`,
+        };
+      }
       db.exec('DELETE FROM teacher_subject_class_pairing');
       const stmt = db.prepare(
         'INSERT OR IGNORE INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)'
       );
       for (const p of pairings) stmt.run(p.user_id, p.subject_id, p.class_id);
+      return { applied: true };
     },
   },
   settings: {
@@ -716,6 +741,37 @@ export const Repo = {
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).run(t.token, t.class_id, t.status, t.created_at, t.created_by, t.expires_at ?? null, t.expires_at_millis ?? null);
       }
+    },
+  },
+  sessions: {
+    create(userId: number, ttlMillis = 12 * 3600 * 1000): { token: string; expiresAtMillis: number } {
+      const token =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '')
+          : Array.from({ length: 48 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      const expiresAtMillis = Date.now() + ttlMillis;
+      db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at_millis) VALUES (?, ?, ?, ?)').run(
+        token,
+        userId,
+        new Date().toISOString(),
+        expiresAtMillis
+      );
+      return { token, expiresAtMillis };
+    },
+    findValid(token: string): { userId: number } | null {
+      if (!token) return null;
+      const row = db.prepare('SELECT user_id, expires_at_millis FROM sessions WHERE token = ?').get(token) as
+        | { user_id: number; expires_at_millis: number }
+        | undefined;
+      if (!row) return null;
+      if (Date.now() > row.expires_at_millis) {
+        db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+        return null;
+      }
+      return { userId: row.user_id };
+    },
+    destroy(token: string) {
+      db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     },
   },
   auditLog: {
