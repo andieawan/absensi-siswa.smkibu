@@ -1,8 +1,8 @@
 import { User } from '../types';
 import { storage } from './storage';
+import { getAuthToken, setAuthToken, clearAuthToken } from './authToken';
 
 const AUTH_STORAGE_KEY = 'go_absen_auth_session_v1';
-const AUTH_TOKEN_KEY = 'go_absen_auth_token_v1';
 
 // Format hash tersimpan: "sha256:<saltHex>:<hashHex>"
 // CATATAN: SHA-256+salt jauh lebih baik dari checksum sebelumnya, tapi tetap
@@ -43,36 +43,6 @@ export interface AuthSession {
   userId: number;
   username: string;
   loggedInAt: string;
-}
-
-/**
- * Token sesi server (Bearer token) — dibutuhkan untuk mengakses endpoint yang
- * membaca/menulis seluruh data sekolah (/api/sync/pull, /api/sync/push).
- * Server TIDAK PERNAH menerima plaintext password kecuali saat login, jadi
- * token inilah yang dipakai ulang untuk request-request berikutnya.
- */
-function getAuthToken(): string | null {
-  try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function setAuthToken(token: string): void {
-  try {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-  } catch (e) {
-    console.error('Failed to store auth token', e);
-  }
-}
-
-function clearAuthToken(): void {
-  try {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 /**

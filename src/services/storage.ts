@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { authHeaders } from './authToken';
 import {
   INITIAL_CLASSES,
   INITIAL_SUBJECTS,
@@ -464,9 +465,10 @@ class StorageManager {
     );
 
     // Kirim data ke backend server untuk validasi dan penegakan aturan bisnis server-side
+    // (recorded_by tidak lagi dipakai server — identitas diambil dari token sesi)
     fetch('/api/attendance/submit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(params),
     })
       .then((res) => res.json())
@@ -506,16 +508,15 @@ class StorageManager {
       `Menghapus ${deletedCount} entri absensi dalam batas 7 hari.`
     );
 
-    // Kirim instruksi penghapusan ke server agar aturan 7 hari dan otorisasi juga diverifikasi di sisi server
+    // Kirim instruksi penghapusan ke server agar aturan 7 hari dan otorisasi juga
+    // diverifikasi di sisi server (identitas & role diambil dari token sesi, bukan body)
     fetch('/api/attendance/delete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         class_id: classId,
         subject_id: subjectId,
         tanggal,
-        user_id: currentUser?.id,
-        role: currentUser?.roles[0] || 'guru',
       }),
     })
       .then((res) => res.json())
@@ -572,13 +573,11 @@ class StorageManager {
     message?: string;
   }> {
     try {
-      const currentUser = this.getCurrentUser();
       const res = await fetch('/api/students/academic-clearance', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           student_id: studentId,
-          operator_id: currentUser?.id,
           admin_override: Boolean(options?.admin_override),
           override_reason: options?.override_reason,
         }),
@@ -700,7 +699,7 @@ class StorageManager {
     try {
       fetch('/api/tokens/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(newToken),
       }).catch(() => {});
     } catch (_) {}

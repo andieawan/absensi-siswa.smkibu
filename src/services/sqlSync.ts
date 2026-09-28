@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { authService } from './auth';
+import { authHeaders } from './authToken';
 
 /**
  * Sinkronisasi Dua Arah dengan Backend SQLite (server/db.ts, lewat REST API server.ts)
@@ -23,14 +23,6 @@ import { authService } from './auth';
  * Push data master (classes/subjects/students/users/pairings/settings) hanya
  * diterima server dari akun Administrator (lihat requireAdmin di server.ts).
  */
-
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = authService.getAuthToken();
-  return {
-    ...(extra || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 export async function testSqlConnection(): Promise<boolean> {
   try {
