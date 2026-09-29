@@ -19,18 +19,18 @@
         <button class="btn btn-pri">Tambah Akun</button>
     </form>
 </details>
-<div class="card card-tight"><div class="scroll"><table class="tbl">
+<div class="card card-tight"><div class="scroll"><table class="tbl tbl-cards">
     <thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Wali</th><th>Mapel</th><th>Status</th><th class="r">Aksi</th></tr></thead>
     <tbody>
     @foreach($users as $u)
         <tr>
-            <td><b>{{ $u->nama }}</b></td><td class="mono">{{ $u->username }}</td><td>{{ $u->roleLabel() }}</td>
-            <td>{{ $classOpts[$u->kelas_wali_id] ?? '-' }}</td>
-            <td style="font-size:12px">{{ collect($u->subjects)->map(fn ($i) => $subjNames[$i] ?? $i)->implode(', ') ?: '-' }}</td>
-            <td><span @class(['badge', 'b-ok' => $u->is_active, 'b-bad' => ! $u->is_active])>{{ $u->is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
+            <td class="card-title"><b>{{ $u->nama }}</b></td><td class="mono" data-label="Username">{{ $u->username }}</td><td data-label="Peran">{{ $u->roleLabel() }}</td>
+            <td data-label="Wali">{{ $classOpts[$u->kelas_wali_id] ?? '-' }}</td>
+            <td style="font-size:12.5px" data-label="Mapel">{{ collect($u->subjects)->map(fn ($i) => $subjNames[$i] ?? $i)->implode(', ') ?: '-' }}</td>
+            <td data-label="Status"><span @class(['badge', 'b-ok' => $u->is_active, 'b-bad' => ! $u->is_active])>{{ $u->is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
             <td class="r"><form method="post" action="{{ route('admin.teachers.toggle', $u) }}" class="inline" data-confirm="{{ $u->is_active ? 'Nonaktifkan' : 'Aktifkan' }} akun {{ $u->username }}?">@csrf<button @class(['btn', 'btn-sm', 'btn-danger' => $u->is_active])>{{ $u->is_active ? 'Nonaktifkan' : 'Aktifkan' }}</button></form></td>
         </tr>
-        <tr><td colspan="7" style="padding:0;border-bottom:1px solid var(--line)"><details style="padding:6px 12px"><summary style="cursor:pointer;font-size:12px;color:var(--pri)">Ubah / reset password — {{ $u->username }}</summary>
+        <tr class="sub-row"><td colspan="7" style="padding:0;border-bottom:1px solid var(--line)"><details style="padding:6px 12px"><summary class="link-summary">Ubah / reset password — {{ $u->username }}</summary>
             <div class="grid g2" style="margin:10px 0;align-items:start">
                 <form method="post" action="{{ route('admin.teachers.reset', $u) }}">@csrf
                     <label>Password baru (min. 8)</label><div class="row"><input type="text" name="password" minlength="8" required autocomplete="off" style="flex:1"><button class="btn btn-sm">Reset</button></div></form>

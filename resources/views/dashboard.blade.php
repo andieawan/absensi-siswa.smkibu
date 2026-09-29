@@ -43,12 +43,24 @@
     <div class="alert alert-info">Aturan agregasi sekolah: data dihitung murni dari absensi harian wali kelas (bukan gabungan mapel) agar tidak terjadi double-counting.</div>
 @endif
 
-<div class="grid g5" style="margin-bottom:16px">
-    <div class="kpi"><small>Tingkat Kehadiran</small><div class="n mono {{ $rc($counts['rate']) }}">{{ number_format($counts['rate'], 1) }}%</div><small>Target sekolah: ≥ 85%</small></div>
-    <div class="kpi"><small>Hadir (H)</small><div class="n mono">{{ $counts['hadir'] }}</div></div>
-    <div class="kpi"><small>Izin (I)</small><div class="n mono">{{ $counts['izin'] }}</div></div>
-    <div class="kpi"><small>Sakit (S)</small><div class="n mono warn">{{ $counts['sakit'] }}</div></div>
-    <div class="kpi"><small>Alpa (A)</small><div class="n mono bad">{{ $counts['alpa'] }}</div></div>
+@php($me = auth()->user())
+@if($me->hasRole('guru', 'admin', 'superadmin') || $me->kelas_wali_id)
+<nav class="quick" aria-label="Aksi cepat">
+    @if($me->kelas_wali_id)<a class="quick-item primary" href="{{ route('attendance', ['mode' => 'wali']) }}"><svg class="ic"><use href="#i-check"/></svg><span><b>Isi Absensi Harian</b><small>Kelas wali · hari ini</small></span></a>@endif
+    <a @class(['quick-item', 'primary' => ! $me->kelas_wali_id]) href="{{ route('attendance', ['mode' => 'mapel']) }}"><svg class="ic"><use href="#i-check"/></svg><span><b>Absensi Mapel</b><small>Per jam pelajaran</small></span></a>
+    <a class="quick-item" href="{{ route('grades') }}"><svg class="ic"><use href="#i-star"/></svg><span><b>Input Nilai</b><small>Tugas, ulangan, susulan</small></span></a>
+    <a class="quick-item" href="{{ route('students') }}"><svg class="ic"><use href="#i-users"/></svg><span><b>Cari Siswa</b><small>Riwayat & surat</small></span></a>
+</nav>
+@endif
+
+<div class="kpis">
+    <div class="kpi kpi-main"><small>Tingkat Kehadiran</small><div class="n mono {{ $rc($counts['rate']) }}">{{ number_format($counts['rate'], 1) }}%</div>
+        <div class="meter" aria-hidden="true"><i class="f-{{ $rc($counts['rate']) }}" style="width:{{ min(100, $counts['rate']) }}%"></i><b style="left:85%"></b></div>
+        <small>Target sekolah ≥ 85% · {{ $counts['total'] }} catatan</small></div>
+    <div class="kpi"><small>Hadir</small><div class="n mono ok">{{ $counts['hadir'] }}</div></div>
+    <div class="kpi"><small>Izin</small><div class="n mono">{{ $counts['izin'] }}</div></div>
+    <div class="kpi"><small>Sakit</small><div class="n mono warn">{{ $counts['sakit'] }}</div></div>
+    <div class="kpi"><small>Alpa</small><div class="n mono bad">{{ $counts['alpa'] }}</div></div>
 </div>
 
 <div class="narr">
@@ -60,11 +72,14 @@
 <div class="split">
     <div class="card">
         <h2>Tren Kehadiran dari Waktu ke Waktu</h2><small>Persentase siswa hadir per tanggal sesi</small>
-        @forelse($trend as $t)
-            <div class="bar"><span class="d mono">{{ $t['date'] }}</span><span class="t"><i class="f-{{ $rc($t['pct']) }}" style="width:{{ $t['pct'] }}%"></i></span><span class="p mono">{{ $t['pct'] }}%</span><span class="m mono">({{ $t['h'] }}/{{ $t['total'] }})</span></div>
-        @empty
-            <div class="empty">Belum ada data rekaman absensi untuk kombinasi ini.</div>
+        @php($recent = array_slice(array_reverse($trend), 0, 10))
+        @php($older = array_slice(array_reverse($trend), 10))
+        @php($bar = fn ($t) => '<div class="bar"><span class="d">'.e(preg_replace('/ \d{4}$/', '', \App\Support\Dates::human($t['date']))).'</span><span class="t"><i class="f-'.$rc($t['pct']).'" style="width:'.$t['pct'].'%"></i></span><span class="p mono">'.$t['pct'].'%</span><span class="m mono">'.$t['h'].'/'.$t['total'].'</span></div>')
+        @if($trend)<p class="mut" style="font-size:12px;margin:6px 0 0">10 sesi terakhir, terbaru di atas.</p>@endif
+        @forelse($recent as $t){!! $bar($t) !!}@empty
+            <div class="empty">Belum ada data absensi untuk pilihan ini.</div>
         @endforelse
+        @if($older)<details class="more"><summary>Tampilkan {{ count($older) }} sesi sebelumnya</summary>@foreach($older as $t){!! $bar($t) !!}@endforeach</details>@endif
     </div>
     <div class="card">
         <h2>Deteksi Pola Absen Berkala</h2>
@@ -98,15 +113,15 @@
     @if(! $shown)
         <div class="empty">Tidak ada siswa dalam kategori ini. Seluruh siswa terpantau tertib.</div>
     @else
-    <div class="scroll"><table class="tbl">
+    <div class="scroll"><table class="tbl tbl-cards">
         <thead><tr><th>Nama Siswa</th><th>NIS</th><th>Kategori</th><th class="c">Alpa</th><th class="c">Izin</th><th class="c">Sakit</th><th class="c">Total</th><th>Sinyal</th><th></th></tr></thead>
         <tbody>
         @foreach($shown as $s)
             <tr>
-                <td><b>{{ $s['student_name'] }}</b></td><td class="mono mut">{{ $s['nis'] }}</td><td>{{ \App\Services\Analytics::CATEGORIES[$s['category']] }}</td>
-                <td class="c mono bad"><b>{{ $s['alpa'] }}</b></td><td class="c mono">{{ $s['izin'] }}</td><td class="c mono warn">{{ $s['sakit'] }}</td><td class="c mono"><b>{{ $s['total'] }}</b></td>
-                <td>@if($s['grade_drop'])<span class="bad"><b>Nilai &amp; kehadiran anjlok</b></span>@else<span class="mut">Normal</span>@endif</td>
-                <td class="r"><a href="{{ route('students', ['id' => $s['student_id']]) }}">Lihat riwayat →</a></td>
+                <td class="card-title"><a href="{{ route('students', ['id' => $s['student_id']]) }}"><b>{{ $s['student_name'] }}</b></a></td><td class="mono mut" data-label="NIS">{{ $s['nis'] }}</td><td data-label="Kategori"><span class="badge b-warn">{{ \App\Services\Analytics::CATEGORIES[$s['category']] }}</span></td>
+                <td class="c mono bad" data-label="Alpa"><b>{{ $s['alpa'] }}</b></td><td class="c mono" data-label="Izin">{{ $s['izin'] }}</td><td class="c mono warn" data-label="Sakit">{{ $s['sakit'] }}</td><td class="c mono" data-label="Total absen"><b>{{ $s['total'] }}</b></td>
+                <td data-label="Nilai">@if($s['grade_drop'])<span class="badge b-bad">Nilai ikut turun</span>@else<span class="mut">Normal</span>@endif</td>
+                <td class="r"><a class="btn btn-sm" href="{{ route('students', ['id' => $s['student_id']]) }}">Lihat riwayat</a></td>
             </tr>
         @endforeach
         </tbody>

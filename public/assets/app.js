@@ -1,42 +1,91 @@
-// JS ringan (tanpa framework): konfirmasi, hitung ulang H/I/S/A, "Set Semua", filter tabel, salin tautan.
+// JS ringan (tanpa framework). Semua fitur bersifat tambahan: halaman tetap berfungsi tanpa JavaScript.
 (function () {
   'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
-  // Konfirmasi: <form data-confirm="Yakin?"> atau <button data-confirm="...">
+  // ---- Konfirmasi: <form data-confirm="…"> atau <a/button data-confirm="…"> ----
   document.addEventListener('submit', function (e) {
     var m = e.target.getAttribute('data-confirm');
     if (m && !window.confirm(m)) e.preventDefault();
   });
+
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-confirm]');
     if (t && t.tagName !== 'FORM' && !window.confirm(t.getAttribute('data-confirm'))) {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation(); return;
     }
+    // Tandai semua dengan status tertentu
     var all = e.target.closest('[data-setall]');
     if (all) {
       var v = all.getAttribute('data-setall');
-      document.querySelectorAll('input[type=radio][data-status="' + v + '"]').forEach(function (r) { r.checked = true; });
+      $$('input[type=radio][data-status="' + v + '"]').forEach(function (r) {
+        if (!r.checked) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
+      });
       recount();
     }
+    // Salin teks
     var cp = e.target.closest('[data-copy]');
     if (cp) {
-      var el = document.querySelector(cp.getAttribute('data-copy'));
-      if (el && navigator.clipboard) {
-        navigator.clipboard.writeText(el.textContent.trim());
-        var old = cp.textContent;
-        cp.textContent = 'Tersalin ✓';
-        setTimeout(function () { cp.textContent = old; }, 1500);
+      var el = $(cp.getAttribute('data-copy'));
+      if (el) {
+        var text = el.textContent.trim();
+        var done = function () { var old = cp.textContent; cp.textContent = 'Tersalin ✓'; setTimeout(function () { cp.textContent = old; }, 1600); };
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { selectText(el); });
+        else selectText(el);
+      }
+    }
+    // Tampilkan/sembunyikan password
+    var eye = e.target.closest('[data-toggle-pw]');
+    if (eye) {
+      var pw = $(eye.getAttribute('data-toggle-pw'));
+      if (pw) {
+        var show = pw.type === 'password';
+        pw.type = show ? 'text' : 'password';
+        eye.textContent = show ? 'Sembunyi' : 'Lihat';
+        eye.setAttribute('aria-pressed', show ? 'true' : 'false');
+        eye.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+      }
+    }
+    // Tutup pesan
+    var x = e.target.closest('[data-dismiss]');
+    if (x) { var box = x.closest('.alert'); if (box) box.remove(); }
+    // Buka menu akun dari navigasi bawah
+    if (e.target.closest('[data-open-acct]')) {
+      var acct = $('.acct');
+      if (acct) { acct.open = !acct.open; if (acct.open) { var first = $('.acct-menu a, .acct-menu button:not(.hide)', acct); if (first) first.focus(); } }
+      return;
+    }
+    // Tutup menu yang terbuka bila klik di luar
+    $$('details[data-close-outside][open]').forEach(function (d) { if (!d.contains(e.target)) d.open = false; });
+    // Buka/tutup catatan absensi
+    var nt = e.target.closest('[data-note-toggle]');
+    if (nt) {
+      var inp = document.getElementById(nt.getAttribute('aria-controls'));
+      if (inp) {
+        var open = !inp.classList.contains('note-open');
+        inp.classList.toggle('note-open', open);
+        nt.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) inp.focus();
       }
     }
   });
 
-  // Ringkasan H/I/S/A pada form absensi
+  function selectText(el) {
+    var r = document.createRange(); r.selectNodeContents(el);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') $$('details[data-close-outside][open]').forEach(function (d) { d.open = false; });
+  });
+
+  // ---- Ringkasan H/I/S/A pada form absensi ----
   function recount() {
     var box = document.getElementById('recount');
     if (!box) return;
     var c = { H: 0, I: 0, S: 0, A: 0 };
-    document.querySelectorAll('input[type=radio][data-status]:checked').forEach(function (r) { c[r.getAttribute('data-status')]++; });
+    $$('input[type=radio][data-status]:checked').forEach(function (r) { c[r.getAttribute('data-status')]++; });
     ['H', 'I', 'S', 'A'].forEach(function (k) {
       var el = box.querySelector('[data-c="' + k + '"]');
       if (el) el.textContent = c[k];
@@ -47,49 +96,87 @@
   });
   recount();
 
-  // Isi cepat nilai
+  // ---- Nilai: isi cepat, Enter pindah ke siswa berikutnya, hitung yang sudah terisi ----
+  function countFilled() {
+    var out = $('[data-filled]');
+    if (!out) return;
+    var n = 0;
+    $$('input.score').forEach(function (i) { if (i.value.trim() !== '') n++; });
+    out.textContent = n + $$('.stu input[disabled]').length;
+  }
   document.addEventListener('click', function (e) {
     var q = e.target.closest('[data-quickfill]');
     if (!q) return;
     var v = q.getAttribute('data-quickfill');
-    document.querySelectorAll('input.score').forEach(function (i) { i.value = v; });
+    var empty = $$('input.score').filter(function (i) { return i.value.trim() === ''; });
+    var targets = empty.length ? empty : $$('input.score');
+    if (!empty.length && !window.confirm('Semua siswa sudah bernilai. Timpa semua nilai dengan ' + v + '?')) return;
+    targets.forEach(function (i) { i.value = v; });
+    markDirty(q.closest('form'));
+    countFilled();
   });
+  document.addEventListener('input', function (e) { if (e.target.matches && e.target.matches('input.score')) countFilled(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || !e.target.matches || !e.target.matches('input.score')) return;
+    e.preventDefault();
+    var list = $$('input.score');
+    var next = list[list.indexOf(e.target) + 1];
+    if (next) { next.focus(); next.select(); }
+    else { var btn = e.target.form && e.target.form.querySelector('.sticky-save .btn-pri'); if (btn) btn.focus(); }
+  });
+  countFilled();
 
-  // Ganti tipe skala: ubah atribut input nilai
   var tipe = document.getElementById('tipe_skala');
   if (tipe) {
     var apply = function () {
-      document.querySelectorAll('input.score').forEach(function (i) {
+      $$('input.score').forEach(function (i) {
         if (tipe.value === 'angka') { i.inputMode = 'decimal'; i.placeholder = '0–100'; i.maxLength = 6; }
-        else { i.inputMode = 'text'; i.placeholder = 'A–E'; i.maxLength = 1; }
+        else { i.inputMode = 'text'; i.placeholder = 'A–E'; i.maxLength = 1; i.autocapitalize = 'characters'; }
       });
     };
     tipe.addEventListener('change', apply);
     apply();
   }
 
-  // Filter tabel sisi klien: <input data-filter="#tabel">
-  document.querySelectorAll('input[data-filter]').forEach(function (inp) {
+  // ---- Peringatan perubahan belum disimpan ----
+  var dirty = null;
+  function markDirty(form) { if (form && form.hasAttribute('data-unsaved')) dirty = form; }
+  document.addEventListener('input', function (e) { markDirty(e.target.form); });
+  document.addEventListener('change', function (e) { markDirty(e.target.form); });
+  window.addEventListener('beforeunload', function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---- Filter otomatis: <select data-auto> ----
+  $$('select[data-auto]').forEach(function (s) {
+    s.addEventListener('change', function () { s.form.submit(); });
+  });
+
+  // ---- Filter tabel sisi klien: <input data-filter="#tabel"> ----
+  $$('input[data-filter]').forEach(function (inp) {
     inp.addEventListener('input', function () {
       var q = inp.value.toLowerCase();
-      document.querySelectorAll(inp.getAttribute('data-filter') + ' tbody tr, ' + inp.getAttribute('data-filter') + ' .item').forEach(function (tr) {
+      $$(inp.getAttribute('data-filter') + ' tbody tr, ' + inp.getAttribute('data-filter') + ' .item').forEach(function (tr) {
         tr.classList.toggle('hide', q && tr.textContent.toLowerCase().indexOf(q) === -1);
       });
     });
   });
 
-  // Auto-submit filter: <select data-auto>
-  document.querySelectorAll('select[data-auto]').forEach(function (s) {
-    s.addEventListener('change', function () { s.form.submit(); });
-  });
-
-  // Cegah kirim ganda
+  // ---- Cegah kirim ganda + tampilkan status "Menyimpan…" ----
   document.addEventListener('submit', function (e) {
     var f = e.target;
-    if (e.defaultPrevented || f.hasAttribute('data-multi')) return;
-    f.querySelectorAll('button[type=submit],button:not([type])').forEach(function (b) {
-      setTimeout(function () { b.disabled = true; }, 0);
-    });
+    if (e.defaultPrevented) return;
+    if (f === dirty) dirty = null;
+    if (f.hasAttribute('data-multi')) return;
+    var btn = e.submitter || f.querySelector('button:not([type=button])');
+    setTimeout(function () {
+      $$('button:not([type=button])', f).forEach(function (b) { b.disabled = true; });
+      if (btn && btn.hasAttribute('data-busy')) { btn.classList.add('is-busy'); btn.textContent = btn.getAttribute('data-busy'); }
+    }, 0);
+  });
+  // Tombol kembali ke halaman dari cache: aktifkan lagi tombol
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) $$('button[disabled]').forEach(function (b) { if (!b.hasAttribute('data-keep-disabled')) b.disabled = false; });
   });
 })();
 

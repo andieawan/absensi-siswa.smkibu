@@ -13,9 +13,9 @@
         <div><button class="btn btn-pri">Tambah Pasangan</button></div>
     </div>
 </form>
-<div class="card card-tight"><table class="tbl"><thead><tr><th>Guru</th><th>Mata pelajaran</th><th>Kelas</th><th class="r">Aksi</th></tr></thead><tbody>
+<div class="card card-tight"><table class="tbl tbl-cards"><thead><tr><th>Guru</th><th>Mata pelajaran</th><th>Kelas</th><th class="r">Aksi</th></tr></thead><tbody>
 @forelse($pairs as $p)
-    <tr><td>{{ $uMap[$p->user_id] ?? '#'.$p->user_id }}</td><td>{{ $sMap[$p->subject_id] ?? '-' }}</td><td>{{ $cMap[$p->class_id] ?? '-' }}</td>
+    <tr><td class="card-title">{{ $uMap[$p->user_id] ?? '#'.$p->user_id }}</td><td data-label="Mapel">{{ $sMap[$p->subject_id] ?? '-' }}</td><td data-label="Kelas">{{ $cMap[$p->class_id] ?? '-' }}</td>
         <td class="r"><form method="post" action="{{ route('admin.pairings.destroy') }}" class="inline" data-confirm="Hapus pasangan ini?">@csrf @method('DELETE')
             <input type="hidden" name="user_id" value="{{ $p->user_id }}"><input type="hidden" name="subject_id" value="{{ $p->subject_id }}"><input type="hidden" name="class_id" value="{{ $p->class_id }}"><button class="btn btn-sm btn-danger">Hapus</button></form></td></tr>
 @empty

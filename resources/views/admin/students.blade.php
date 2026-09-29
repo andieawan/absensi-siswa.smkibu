@@ -29,13 +29,13 @@
         <div><button class="btn">Cari</button></div>
     </div>
 </form>
-<div class="card card-tight"><div class="scroll"><table class="tbl">
+<div class="card card-tight"><div class="scroll"><table class="tbl tbl-cards">
     <thead><tr><th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>Status</th><th class="r">Edit</th></tr></thead>
     <tbody>
     @forelse($list as $s)
-        <tr><td class="mono">{{ $s->nis }}</td><td><b>{{ $s->nama }}</b></td><td>{{ $s->jk }}</td><td>{{ $s->schoolClass->name ?? '-' }}</td>
-            <td><span @class(['badge', 'b-ok' => $s->status === 'aktif', 'b-warn' => $s->status !== 'aktif'])>{{ $s->status }}</span></td>
-            <td class="r"><details><summary style="cursor:pointer;color:var(--pri);font-size:12px">Ubah</summary>
+        <tr><td class="mono" data-label="NIS">{{ $s->nis }}</td><td class="card-title" style="order:-1"><b>{{ $s->nama }}</b></td><td data-label="JK">{{ $s->jk }}</td><td data-label="Kelas">{{ $s->schoolClass->name ?? '-' }}</td>
+            <td data-label="Status"><span @class(['badge', 'b-ok' => $s->status === 'aktif', 'b-warn' => $s->status !== 'aktif'])>{{ $s->status }}</span></td>
+            <td class="r"><details><summary class="link-summary">Ubah data</summary>
                 <form method="post" action="{{ route('admin.students.update', $s) }}" style="text-align:left;min-width:240px;margin:8px 0">@csrf @method('PUT')
                     <div class="field"><label>Nama</label><input type="text" name="nama" value="{{ $s->nama }}" required></div>
                     <div class="field"><label>JK</label>@include('partials.select', ['name' => 'jk', 'options' => ['L' => 'Laki-laki', 'P' => 'Perempuan'], 'selected' => $s->jk])</div>

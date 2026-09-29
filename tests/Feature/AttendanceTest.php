@@ -22,7 +22,7 @@ class AttendanceTest extends TestCase
         $r = Attendance::where(['student_id' => 1, 'tanggal' => $today])->first();
         $this->assertSame('A', $r->status);
         $this->assertSame('wali', $r->recorded_via);
-        $this->get("/absensi?mode=wali&class=1&date=$today")->assertSee('sakit demam')->assertSee('sudah tercatat');
+        $this->get("/absensi?mode=wali&class=1&date=$today")->assertSee('sakit demam')->assertSee('Sudah diisi');
     }
 
     public function test_tolak_siswa_kelas_lain_dan_kelas_bukan_wali(): void

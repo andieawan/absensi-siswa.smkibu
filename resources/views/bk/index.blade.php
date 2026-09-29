@@ -17,9 +17,9 @@
 </form>
 <div class="card card-tight"><div style="padding:14px 16px"><h2>Rekap Ketidakhadiran Kelas</h2><small>Diurutkan dari ketidakhadiran terbanyak</small></div>
     @if($recap->isEmpty())<div class="empty">Tidak ada siswa aktif.</div>@else
-    <div class="scroll"><table class="tbl"><thead><tr><th>Nama</th><th>NIS</th><th class="c">H</th><th class="c">I</th><th class="c">S</th><th class="c">A</th><th class="c">Total Absen</th><th class="r">Aksi</th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl tbl-cards"><thead><tr><th>Nama</th><th>NIS</th><th class="c">H</th><th class="c">I</th><th class="c">S</th><th class="c">A</th><th class="c">Total Absen</th><th class="r">Aksi</th></tr></thead><tbody>
     @foreach($recap as $r)
-        <tr><td><b>{{ $r['s']->nama }}</b></td><td class="mono mut">{{ $r['s']->nis }}</td><td class="c mono">{{ $r['h'] }}</td><td class="c mono">{{ $r['i'] }}</td><td class="c mono warn">{{ $r['sk'] }}</td><td class="c mono bad">{{ $r['a'] }}</td><td class="c mono"><b>{{ $r['abs'] }}</b></td>
+        <tr><td class="card-title"><b>{{ $r['s']->nama }}</b></td><td class="mono mut" data-label="NIS">{{ $r['s']->nis }}</td><td class="c mono" data-label="Hadir">{{ $r['h'] }}</td><td class="c mono" data-label="Izin">{{ $r['i'] }}</td><td class="c mono warn" data-label="Sakit">{{ $r['sk'] }}</td><td class="c mono bad" data-label="Alpa">{{ $r['a'] }}</td><td class="c mono" data-label="Total absen"><b>{{ $r['abs'] }}</b></td>
             <td class="r"><a href="{{ route('students', ['id' => $r['s']->id]) }}">Riwayat</a> · <a target="_blank" href="{{ route('letters.summons', $r['s']) }}">Surat panggilan</a></td></tr>
     @endforeach
     </tbody></table></div>@endif

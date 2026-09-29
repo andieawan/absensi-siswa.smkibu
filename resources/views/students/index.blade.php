@@ -2,7 +2,7 @@
 @section('content')
 @php($rc = fn ($r) => $r >= 90 ? 'ok' : ($r >= 80 ? 'warn' : 'bad'))
 <div class="head"><div><h1>Riwayat Siswa (Student 360)</h1><small>Profil, kehadiran, pola absen, nilai, dan akses wali murid dalam satu halaman.</small></div></div>
-<div class="grid s360" style="grid-template-columns:minmax(230px,300px) 1fr;align-items:start">
+<div @class(['grid', 's360', 'has-sel' => (bool) $student]) style="grid-template-columns:minmax(230px,300px) 1fr;align-items:start">
     <aside class="card card-tight">
         <form method="get" action="{{ route('students') }}" style="padding:12px;border-bottom:1px solid var(--line)">
             @if($student)<input type="hidden" name="id" value="{{ $student->id }}">@endif
@@ -23,8 +23,9 @@
 
     <section>
     @if(! $student)
-        <div class="card"><div class="empty">Pilih siswa dari daftar.</div></div>
+        <div class="card hide-sm"><div class="empty">Cari lalu pilih siswa dari daftar di kiri untuk melihat riwayatnya.</div></div>
     @else
+        <a class="back-link only-mobile" href="{{ route('students', array_filter(['q' => $q ?: null, 'class' => $fc ?: null])) }}">‹ Kembali ke daftar siswa</a>
         <div class="card">
             <div class="head" style="margin-bottom:12px">
                 <div><h1>{{ $student->nama }}</h1><small class="mono">{{ $student->nis }}</small> · <small>{{ $student->schoolClass->name ?? '-' }} · {{ $student->jk === 'L' ? 'Laki-laki' : 'Perempuan' }}</small>
@@ -104,5 +105,5 @@
     @endif
     </section>
 </div>
-@push('head')<style>@media(max-width:760px){.s360{grid-template-columns:1fr!important}}</style>@endpush
+@push('head')<style>@media(max-width:760px){.s360{grid-template-columns:1fr!important}.s360.has-sel>aside{display:none}}</style>@endpush
 @endsection

@@ -22,7 +22,7 @@
 @unless($auth['allowed'])<div class="alert alert-warn">{{ $auth['error'] ?? 'Tidak berwenang.' }}</div>@endunless
 
 @if($tab === 'input')
-<form method="post" action="{{ route('grades.store') }}" class="card card-tight">
+<form method="post" action="{{ route('grades.store') }}" class="card card-tight" data-unsaved data-scores>
     @csrf <input type="hidden" name="class" value="{{ $classId }}"><input type="hidden" name="subject" value="{{ $subjectId }}"><input type="hidden" name="act" value="{{ $editing->id ?? '' }}">
     <div style="padding:16px;border-bottom:1px solid var(--line)">
         @if($susulan)
@@ -52,27 +52,27 @@
     @empty
         <div class="empty">Tidak ada siswa aktif di kelas ini.</div>
     @endforelse
-    <div class="sticky-save"><small>Kosongkan nilai siswa yang belum mengumpulkan — bisa diisi susulan kapan saja (tidak dihitung rata-rata).</small>
+    <div class="sticky-save"><div><b class="mono" data-filled>0</b> <small>dari {{ $students->count() }} siswa sudah bernilai</small><small class="hide-sm" style="display:block">Kosongkan nilai siswa yang belum mengumpulkan — bisa diisi susulan nanti (tidak dihitung rata-rata).</small></div>
         <div class="row">@if($editing)<a class="btn" href="{{ $url(['tab' => null]) }}">Batal Edit</a>@endif
-            <button class="btn btn-pri" @disabled(! $auth['allowed'] || $students->isEmpty())>{{ $susulan ? 'Simpan Nilai Susulan' : 'Simpan Nilai' }}</button></div></div>
+            <button class="btn btn-pri" data-busy="Menyimpan…" @disabled(! $auth['allowed'] || $students->isEmpty())>{{ $susulan ? 'Simpan Nilai Susulan' : 'Simpan Nilai' }}</button></div></div>
 </form>
 
 @elseif($tab === 'aktivitas')
 <div class="card card-tight">
     @if($acts->isEmpty())<div class="empty">Belum ada kegiatan penilaian untuk kombinasi ini.</div>@else
-    <div class="scroll"><table class="tbl"><thead><tr><th>Tanggal</th><th>Kegiatan</th><th>Skala</th><th class="c">Siswa</th><th class="c">Rata-rata</th><th class="r">Aksi</th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl tbl-cards"><thead><tr><th>Tanggal</th><th>Kegiatan</th><th>Skala</th><th class="c">Siswa</th><th class="c">Rata-rata</th><th class="r">Aksi</th></tr></thead><tbody>
     @foreach($acts as $a)
         @php($v = $vals[$a->id] ?? [])
         @php($nums = array_filter($v, 'is_numeric'))
         @php($canDel = \App\Services\Rules::gradeEditable(auth()->user(), $a))
-        <tr><td class="mono">{{ $a->tanggal_kegiatan }}</td><td><b>{{ $a->nama_kegiatan }}</b></td><td>{{ $a->tipe_skala }}</td>
-            <td class="c mono">{{ count($v) }}</td><td class="c mono"><b>{{ $a->tipe_skala === 'angka' && $nums ? number_format(array_sum($nums) / count($nums), 1) : '-' }}</b></td>
+        <tr><td class="mono" data-label="Tanggal">{{ $a->tanggal_kegiatan }}</td><td class="card-title"><b>{{ $a->nama_kegiatan }}</b>@unless($canDel) <span class="badge" title="Lebih dari 7 hari sejak diinput">🔒 terkunci</span>@endunless</td><td data-label="Skala">{{ $a->tipe_skala }}</td>
+            <td class="c mono" data-label="Siswa bernilai">{{ count($v) }}</td><td class="c mono" data-label="Rata-rata"><b>{{ $a->tipe_skala === 'angka' && $nums ? number_format(array_sum($nums) / count($nums), 1) : '-' }}</b></td>
             <td class="r"><div class="row row-end">
                 @php($kosong = $students->count() - count(array_intersect_key($v, $students->keyBy('id')->all())))
                 @if($canDel)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Edit</a>
                 @elseif($kosong > 0)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Nilai Susulan ({{ $kosong }})</a>@endif
                 @if($canDel)<form method="post" action="{{ route('grades.destroy', $a->id) }}" class="inline" data-confirm="Hapus kegiatan &quot;{{ $a->nama_kegiatan }}&quot; beserta seluruh nilainya?">@csrf<button class="btn btn-sm btn-danger">Hapus</button></form>
-                @else<span class="badge">🔒 &gt; 7 hari</span>@endif
+                @endif
             </div></td></tr>
     @endforeach
     </tbody></table></div>@endif
