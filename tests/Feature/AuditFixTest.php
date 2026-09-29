@@ -39,12 +39,37 @@ class AuditFixTest extends TestCase
         $this->grade(['tanggal' => $this->daysAgo(30)])->assertSessionHas('success'); // input terlambat tetap boleh
         $act = GradeActivity::firstOrFail();
         $act->update(['created_at' => gmdate('Y-m-d H:i:s', time() - 10 * 86400)]);
-        $this->grade(['act' => $act->id, 'nilai' => [1 => '99']])->assertSessionHas('error', fn ($m) => str_contains($m, 'dikunci'));
+        $this->grade(['act' => $act->id, 'nilai' => [1 => '99']])->assertSessionHas('error', fn ($m) => str_contains($m, 'terkunci'));
         $this->grade(['act' => $act->id, 'tanggal' => Dates::today(), 'nilai' => [1 => '99']])->assertSessionHas('error');
         $this->assertSame('50', GradeValue::where(['activity_id' => $act->id, 'student_id' => 1])->value('nilai'));
         $this->post("/nilai/{$act->id}/hapus")->assertSessionHas('error');
-        $this->get("/nilai?class=1&subject=1&act={$act->id}")->assertDontSee('Mengedit kegiatan');
+        $this->get("/nilai?class=1&subject=1&act={$act->id}")->assertDontSee('Mengedit kegiatan')->assertSee('Mode nilai susulan');
         $this->actingAs($this->admin)->post('/nilai', ['class' => 1, 'subject' => 1, 'act' => $act->id, 'nama' => 'UH', 'tanggal' => Dates::today(), 'tipe' => 'angka', 'nilai' => [1 => '99']])->assertSessionHas('success');
+    }
+
+    public function test_nilai_susulan_untuk_siswa_yang_telat_mengumpulkan(): void
+    {
+        $this->grade(['nilai' => [1 => '50', 2 => '60', 3 => '', 4 => '']])->assertSessionHas('success');
+        $act = GradeActivity::firstOrFail();
+        $act->update(['created_at' => gmdate('Y-m-d H:i:s', time() - 20 * 86400)]); // sudah terkunci
+
+        $this->get('/nilai?class=1&subject=1&tab=aktivitas')->assertSee('Nilai Susulan (2)');
+        $page = $this->get("/nilai?class=1&subject=1&act={$act->id}")->assertSee('Mode nilai susulan')->assertSee('belum ada nilai');
+        $page->assertDontSee('name="nilai[1]"', false)->assertSee('name="nilai[3]"', false);
+
+        // Siswa 3 menyusul; nama/tanggal di form diabaikan (tetap data lama); nilai lama dikirim sama → tidak dianggap perubahan
+        $this->grade(['act' => $act->id, 'nama' => 'Diganti', 'tanggal' => Dates::today(), 'nilai' => [1 => '50', 3 => '88', 4 => '']])->assertSessionHas('success');
+        $this->assertSame('88', GradeValue::where(['activity_id' => $act->id, 'student_id' => 3])->value('nilai'));
+        $this->assertNull(GradeValue::where(['activity_id' => $act->id, 'student_id' => 4])->value('nilai'));
+        $this->assertSame('UH', $act->fresh()->nama_kegiatan);
+        $this->assertSame($this->daysAgo(0), $act->fresh()->tanggal_kegiatan);
+        $this->assertTrue(AuditLog::where('action', 'Nilai Susulan')->where('details', 'like', '%Siswa 3%')->exists());
+
+        // Nilai yang sudah ada tidak bisa diubah, dan tidak bisa dikosongkan lewat mode susulan
+        $this->grade(['act' => $act->id, 'nilai' => [3 => '99']])->assertSessionHas('error', fn ($m) => str_contains($m, 'terkunci'));
+        $this->grade(['act' => $act->id, 'nilai' => [1 => '', 4 => '']])->assertSessionHas('error', fn ($m) => str_contains($m, 'susulan baru'));
+        $this->assertSame(3, GradeValue::where('activity_id', $act->id)->count());
+        $this->get('/nilai?class=1&subject=1&tab=rekap')->assertSee('88');
     }
 
     public function test_tanggal_nilai_masa_depan_ditolak(): void

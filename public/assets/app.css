@@ -30,11 +30,11 @@ small,.mut{color:var(--mut)}small{font-size:12px}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px}
 .kpi small{display:block;font-weight:600}.kpi .n{font-size:26px;font-weight:800;margin-top:4px}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;font:600 13px inherit;cursor:pointer}
-.btn:hover{background:var(--line2);text-decoration:none}.btn-sm{min-height:32px;padding:0 10px;font-size:12px}
-.btn-pri{background:var(--pri);border-color:var(--pri);color:#fff}.btn-pri:hover{background:var(--pri-d)}
-.btn-dark{background:var(--ink);border-color:var(--ink);color:#fff}.btn-dark:hover{background:#1e293b}
-.btn-danger{color:var(--bad);border-color:#fecdd3}.btn-danger:hover{background:var(--bad-bg)}
+.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;font-family:inherit;font-weight:600;font-size:13px;line-height:1.2;cursor:pointer}
+.btn:hover{background:var(--line2);text-decoration:none}.btn.btn-sm{min-height:32px;padding:0 10px;font-size:12px}
+.btn.btn-pri{background:var(--pri);border-color:var(--pri);color:#fff}.btn.btn-pri:hover{background:var(--pri-d)}
+.btn.btn-dark{background:var(--ink);border-color:var(--ink);color:#fff}.btn.btn-dark:hover{background:#1e293b}
+.btn.btn-danger{color:var(--bad);border-color:#fecdd3}.btn.btn-danger:hover{background:var(--bad-bg)}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 label{display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:4px}
 input[type=text],input[type=password],input[type=date],input[type=number],input[type=search],input[type=file],select,textarea{width:100%;min-height:40px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font:inherit;color:var(--ink)}

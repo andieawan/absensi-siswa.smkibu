@@ -29,13 +29,10 @@ class GradeController extends Controller
             $vals[$v->activity_id][$v->student_id] = $v->nilai;
         }
         $editing = $request->query('act') ? $acts->firstWhere('id', $request->query('act')) : null;
-        if ($editing && ! Rules::gradeEditable($u, $editing)) {
-            $editing = null;
-            session()->now('warning', 'Kegiatan itu diinput lebih dari 7 hari lalu dan sudah dikunci.');
-        }
+        $susulan = $editing && ! Rules::gradeEditable($u, $editing); // hanya siswa tanpa nilai yang bisa diisi
         $auth = $classId && $subjectId ? Rules::teacherAuthorization($u, $subjectId, $classId) : ['allowed' => false, 'error' => 'Pilih kelas dan mata pelajaran.'];
 
-        return view('grades.index', compact('classes', 'subjects', 'classId', 'subjectId', 'tab', 'students', 'acts', 'vals', 'editing', 'auth') + ['today' => Dates::today()]);
+        return view('grades.index', compact('classes', 'subjects', 'classId', 'subjectId', 'tab', 'students', 'acts', 'vals', 'editing', 'susulan', 'auth') + ['today' => Dates::today()]);
     }
 
     public function store(Request $request)
@@ -45,10 +42,10 @@ class GradeController extends Controller
             'nama' => 'required|string|max:120', 'tanggal' => 'required|date_format:Y-m-d', 'tipe' => 'required|in:angka,huruf',
             'nilai' => 'required|array',
         ], [], ['nama' => 'nama kegiatan', 'nilai' => 'nilai siswa']);
-        GradeService::save($this->me(), ($data['act'] ?? null) ?: null, (int) $data['class'], (int) $data['subject'], $data['nama'], $data['tanggal'], $data['tipe'], $data['nilai']);
+        $act = GradeService::save($this->me(), ($data['act'] ?? null) ?: null, (int) $data['class'], (int) $data['subject'], $data['nama'], $data['tanggal'], $data['tipe'], $data['nilai']);
 
         return redirect()->route('grades', ['class' => $data['class'], 'subject' => $data['subject'], 'tab' => 'aktivitas'])
-            ->with('success', 'Penilaian "'.$data['nama'].'" berhasil disimpan untuk '.count($data['nilai']).' siswa.');
+            ->with('success', 'Penilaian "'.$act->nama_kegiatan.'" berhasil disimpan ('.count(array_filter($data['nilai'], fn ($v) => trim((string) $v) !== '')).' nilai terisi).');
     }
 
     public function destroy(GradeActivity $activity)

@@ -21,13 +21,16 @@ class GradeTest extends TestCase
     {
         $this->save()->assertSessionHas('success');
         $act = GradeActivity::firstOrFail();
-        $this->assertSame('0', GradeValue::where(['activity_id' => $act->id, 'student_id' => 3])->value('nilai')); // kosong → 0
+        $this->assertNull(GradeValue::where(['activity_id' => $act->id, 'student_id' => 3])->value('nilai')); // kosong = belum mengumpulkan
         $this->get("/nilai?class=1&subject=1&act={$act->id}")->assertSee('value="55"', false)->assertSee('Mengedit kegiatan');
         $this->save(['act' => $act->id, 'nama' => 'UH 1 revisi', 'nilai' => [1 => '90', 2 => '80', 3 => '70', 4 => '100']]);
         $this->assertSame(1, GradeActivity::count());
         $this->assertSame('90', GradeValue::where(['activity_id' => $act->id, 'student_id' => 1])->value('nilai'));
         $this->get('/nilai?class=1&subject=1&tab=rekap')->assertSee('UH 1 revisi')->assertSee('90.0');
         $this->get('/nilai?class=1&subject=1&tab=aktivitas')->assertSee('85.0');
+        // mengosongkan nilai saat edit (≤ 7 hari) = menghapus nilai siswa itu
+        $this->save(['act' => $act->id, 'nama' => 'UH 1 revisi', 'nilai' => [1 => '90', 2 => '', 3 => '70', 4 => '100']]);
+        $this->assertNull(GradeValue::where(['activity_id' => $act->id, 'student_id' => 2])->value('nilai'));
         $res = $this->get('/unduh/nilai?class=1&subject=1');
         $res->assertOk();
         $this->assertStringStartsWith('PK', $res->getContent());

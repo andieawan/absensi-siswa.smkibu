@@ -5,7 +5,7 @@
     $tipe = old('tipe', $editing->tipe_skala ?? 'angka');
 @endphp
 <div class="head">
-    <div><h1>Penilaian Siswa</h1><small>Nilai angka 0–100 atau huruf A–E. Kegiatan dapat diedit/dihapus sampai 7 hari setelah diinput.</small></div>
+    <div><h1>Penilaian Siswa</h1><small>Nilai angka 0–100 atau huruf A–E. Kegiatan dapat diedit/dihapus sampai 7 hari setelah diinput; setelah itu siswa yang belum punya nilai tetap bisa diisi susulan.</small></div>
     <div class="seg">
         <a @class(['on' => $tab === 'input']) href="{{ $url(['tab' => null]) }}">Input Nilai</a>
         <a @class(['on' => $tab === 'aktivitas']) href="{{ $url(['tab' => 'aktivitas']) }}">Kegiatan ({{ $acts->count() }})</a>
@@ -25,25 +25,36 @@
 <form method="post" action="{{ route('grades.store') }}" class="card card-tight">
     @csrf <input type="hidden" name="class" value="{{ $classId }}"><input type="hidden" name="subject" value="{{ $subjectId }}"><input type="hidden" name="act" value="{{ $editing->id ?? '' }}">
     <div style="padding:16px;border-bottom:1px solid var(--line)">
-        @if($editing)<div class="alert alert-info">Mengedit kegiatan: {{ $editing->nama_kegiatan }} — menyimpan akan menimpa nilai lama.</div>@endif
+        @if($susulan)
+            <div class="alert alert-warn"><b>Mode nilai susulan:</b> kegiatan “{{ $editing->nama_kegiatan }}” diinput lebih dari 7 hari lalu. Nilai yang sudah ada terkunci; hanya siswa yang <b>belum punya nilai</b> yang bisa diisi.</div>
+        @elseif($editing)
+            <div class="alert alert-info">Mengedit kegiatan: {{ $editing->nama_kegiatan }} — menyimpan akan menimpa nilai lama.</div>
+        @endif
         <div class="fields">
-            <div><label for="nama">Nama Kegiatan</label><input id="nama" type="text" name="nama" value="{{ old('nama', $editing->nama_kegiatan ?? '') }}" placeholder="mis. Ulangan Harian 1" maxlength="120" required></div>
-            <div><label for="tanggal">Tanggal</label><input id="tanggal" type="date" name="tanggal" value="{{ old('tanggal', $editing->tanggal_kegiatan ?? $today) }}" max="{{ $today }}" required></div>
-            <div><label for="tipe_skala">Skala</label><select id="tipe_skala" name="tipe"><option value="angka" @selected($tipe === 'angka')>Angka (0–100)</option><option value="huruf" @selected($tipe === 'huruf')>Huruf (A–E)</option></select></div>
+            <div><label for="nama">Nama Kegiatan</label><input id="nama" type="text" name="nama" value="{{ old('nama', $editing->nama_kegiatan ?? '') }}" placeholder="mis. Ulangan Harian 1" maxlength="120" required @readonly($susulan)></div>
+            <div><label for="tanggal">Tanggal</label><input id="tanggal" type="date" name="tanggal" value="{{ old('tanggal', $editing->tanggal_kegiatan ?? $today) }}" max="{{ $today }}" required @readonly($susulan)></div>
+            <div><label for="tipe_skala">Skala</label>@if($susulan)<input type="hidden" name="tipe" value="{{ $tipe }}">@endif<select id="tipe_skala" name="tipe" @disabled($susulan)><option value="angka" @selected($tipe === 'angka')>Angka (0–100)</option><option value="huruf" @selected($tipe === 'huruf')>Huruf (A–E)</option></select></div>
         </div>
-        <div class="row" style="margin-top:10px"><small>Isi cepat:</small>
+        @unless($susulan)<div class="row" style="margin-top:10px"><small>Isi cepat:</small>
             @foreach(['100', '85', '75', 'A', 'B', 'C'] as $v)<button type="button" class="btn btn-sm" data-quickfill="{{ $v }}">{{ $v }}</button>@endforeach
-        </div>
+        </div>@endunless
     </div>
     @forelse($students as $i => $s)
-        <div class="stu"><span class="no mono">{{ $i + 1 }}</span><div class="nm"><b>{{ $s->nama }}</b><small>{{ $s->nis }}</small></div>
-            <input class="score mono" style="width:100px;text-align:center" type="text" name="nilai[{{ $s->id }}]" value="{{ old("nilai.{$s->id}", $editing ? ($vals[$editing->id][$s->id] ?? '') : '') }}" aria-label="Nilai {{ $s->nama }}" autocomplete="off"></div>
+        @php($lama = $editing ? ($vals[$editing->id][$s->id] ?? null) : null)
+        @php($kunci = $susulan && $lama !== null)
+        <div class="stu"><span class="no mono">{{ $i + 1 }}</span><div class="nm"><b>{{ $s->nama }}</b><small>{{ $s->nis }}@if($susulan && $lama === null) · <span class="warn">belum ada nilai</span>@endif</small></div>
+            @if($kunci)
+                <input class="mono" style="width:100px;text-align:center" type="text" value="{{ $lama }}" disabled aria-label="Nilai {{ $s->nama }} (terkunci)"><span class="badge" title="Terkunci">🔒</span>
+            @else
+                <input class="score mono" style="width:100px;text-align:center" type="text" name="nilai[{{ $s->id }}]" value="{{ old("nilai.{$s->id}", $lama ?? '') }}" aria-label="Nilai {{ $s->nama }}" autocomplete="off">
+            @endif
+        </div>
     @empty
         <div class="empty">Tidak ada siswa aktif di kelas ini.</div>
     @endforelse
-    <div class="sticky-save"><small>Nilai kosong disimpan sebagai 0 (angka) atau C (huruf).</small>
+    <div class="sticky-save"><small>Kosongkan nilai siswa yang belum mengumpulkan — bisa diisi susulan kapan saja (tidak dihitung rata-rata).</small>
         <div class="row">@if($editing)<a class="btn" href="{{ $url(['tab' => null]) }}">Batal Edit</a>@endif
-            <button class="btn btn-pri" @disabled(! $auth['allowed'] || $students->isEmpty())>Simpan Nilai</button></div></div>
+            <button class="btn btn-pri" @disabled(! $auth['allowed'] || $students->isEmpty())>{{ $susulan ? 'Simpan Nilai Susulan' : 'Simpan Nilai' }}</button></div></div>
 </form>
 
 @elseif($tab === 'aktivitas')
@@ -57,7 +68,10 @@
         <tr><td class="mono">{{ $a->tanggal_kegiatan }}</td><td><b>{{ $a->nama_kegiatan }}</b></td><td>{{ $a->tipe_skala }}</td>
             <td class="c mono">{{ count($v) }}</td><td class="c mono"><b>{{ $a->tipe_skala === 'angka' && $nums ? number_format(array_sum($nums) / count($nums), 1) : '-' }}</b></td>
             <td class="r"><div class="row row-end">
-                @if($canDel)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Edit</a><form method="post" action="{{ route('grades.destroy', $a->id) }}" class="inline" data-confirm="Hapus kegiatan &quot;{{ $a->nama_kegiatan }}&quot; beserta seluruh nilainya?">@csrf<button class="btn btn-sm btn-danger">Hapus</button></form>
+                @php($kosong = $students->count() - count(array_intersect_key($v, $students->keyBy('id')->all())))
+                @if($canDel)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Edit</a>
+                @elseif($kosong > 0)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Nilai Susulan ({{ $kosong }})</a>@endif
+                @if($canDel)<form method="post" action="{{ route('grades.destroy', $a->id) }}" class="inline" data-confirm="Hapus kegiatan &quot;{{ $a->nama_kegiatan }}&quot; beserta seluruh nilainya?">@csrf<button class="btn btn-sm btn-danger">Hapus</button></form>
                 @else<span class="badge">🔒 &gt; 7 hari</span>@endif
             </div></td></tr>
     @endforeach
