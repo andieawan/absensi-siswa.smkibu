@@ -11,7 +11,7 @@ define('APP_DIR', __DIR__);
 date_default_timezone_set('UTC');
 mb_internal_encoding('UTF-8');
 
-foreach (['Core', 'Db', 'Repo', 'Rules', 'Backup', 'Api', 'Access'] as $f) {
+foreach (['Core', 'Db', 'Repo', 'Rules', 'Backup', 'Api', 'Access', 'Analytics', 'Svc', 'Web', 'Xlsx', 'Letters'] as $f) {
     require_once __DIR__ . "/$f.php";
 }
 

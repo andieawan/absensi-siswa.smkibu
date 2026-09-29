@@ -527,4 +527,53 @@ final class Repo
     {
         Db::run('DELETE FROM login_attempts WHERE k = ?', [$key]);
     }
+
+    // ---- Tambahan untuk antarmuka web ----------------------------------------------
+    public static function gradeActivityById(string $id): ?array
+    {
+        foreach (self::gradeActivitiesAll() as $a) {
+            if ($a['id'] === $id) return $a;
+        }
+        return null;
+    }
+
+    public static function gradeActivityUpdate(string $id, string $nama, string $tanggal, string $tipe): void
+    {
+        Db::run('UPDATE grade_activities SET nama_kegiatan = ?, tanggal_kegiatan = ?, tipe_skala = ? WHERE id = ?', [$nama, $tanggal, $tipe, $id]);
+    }
+
+    public static function gradeValuesReplace(string $activityId, array $values): void
+    {
+        Db::run('DELETE FROM grade_values WHERE activity_id = ?', [$activityId]);
+        self::gradeValuesInsertMany($activityId, $values);
+    }
+
+    public static function gradeActivityDelete(string $id): void
+    {
+        Db::run('DELETE FROM grade_values WHERE activity_id = ?', [$id]);
+        Db::run('DELETE FROM grade_activities WHERE id = ?', [$id]);
+    }
+
+    public static function auditAll(): array
+    {
+        return Db::all('SELECT id, timestamp, action, module, actor, details FROM audit_log ORDER BY id DESC LIMIT 500');
+    }
+
+    public static function pairingAdd(int $userId, int $subjectId, int $classId): void
+    {
+        $sql = (Db::driver() === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE')
+            . ' INTO teacher_subject_class_pairing (user_id, subject_id, class_id) VALUES (?, ?, ?)';
+        Db::run($sql, [$userId, $subjectId, $classId]);
+    }
+
+    public static function pairingRemove(int $userId, int $subjectId, int $classId): void
+    {
+        Db::run('DELETE FROM teacher_subject_class_pairing WHERE user_id = ? AND subject_id = ? AND class_id = ?', [$userId, $subjectId, $classId]);
+    }
+
+    public static function studentByNis(string $nis): ?array
+    {
+        $r = Db::get('SELECT * FROM students WHERE nis = ?', [$nis]);
+        return $r ? self::student($r) : null;
+    }
 }

@@ -29,6 +29,10 @@ final class Backup
             @file_put_contents($dir . '/.htaccess', "Require all denied\n");
 
             $stamp = substr(str_replace([':', '.'], '-', Util::iso()), 0, 19);
+            // Dua backup dalam detik yang sama (mis. otomatis saat login + manual) tidak boleh saling menimpa/gagal.
+            for ($n = 2; glob("$dir/absensi_$stamp.*"); $n++) {
+                $stamp = substr(str_replace([':', '.'], '-', Util::iso()), 0, 19) . "-$n";
+            }
             $file = Db::driver() === 'sqlite'
                 ? self::sqlite($dir, $stamp)
                 : self::mysqlDump($dir, $stamp);
