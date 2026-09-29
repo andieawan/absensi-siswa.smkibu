@@ -13,6 +13,9 @@ use App\Http\Controllers\PublicController;
 use App\Http\Controllers\StudentController;
 use Illuminate\Support\Facades\Route;
 
+// ---- PWA (manifest aplikasi yang bisa dipasang di HP) ----
+Route::get('/manifest.webmanifest', [\App\Http\Controllers\PwaController::class, 'manifest'])->name('manifest');
+
 // ---- Instalasi pertama (hanya aktif selama belum ada akun) ----
 Route::get('/pasang', [InstallController::class, 'show'])->name('install');
 Route::post('/pasang', [InstallController::class, 'run'])->middleware('throttle:5,1');

@@ -23,3 +23,13 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# PWA: service worker & manifest harus selalu dicek ulang agar pembaruan cepat sampai ke HP
+<IfModule mod_headers.c>
+    <FilesMatch "^(sw\.js|offline\.html)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>

@@ -70,6 +70,15 @@ Tanpa cron pun backup tetap berjalan otomatis tiap 24 jam saat ada yang login.
 5. Buka **`https://domain-anda/pasang`** → klik *Pasang Sekarang*. Tabel dibuat dan akun admin pertama dibuat.
    Halaman ini otomatis tertutup begitu sudah ada akun.
 
+## Aplikasi di HP (PWA)
+Aplikasi bisa dipasang ke layar utama HP/laptop seperti aplikasi biasa (ikon sendiri, layar penuh, pintasan "Isi Absensi" & "Input Nilai"):
+- **Android / Chrome / Edge:** buka situs → tombol **Pasang Aplikasi** (di halaman login atau menu atas), atau menu ⋮ → *Instal aplikasi*.
+- **iPhone / iPad (Safari):** tombol Bagikan → *Tambahkan ke Layar Utama*.
+
+Syarat: situs memakai **HTTPS**. Halaman selalu diambil langsung dari server (data siswa tidak disimpan di HP); bila tidak ada
+internet, muncul halaman "Tidak ada koneksi". Nama aplikasi mengikuti nama sekolah di Pengaturan. Setelah mengubah
+`public/sw.js`, naikkan `VERSION` di dalamnya agar HP mengambil versi baru.
+
 ## Pindah dari versi lama (React/Node atau PHP murni)
 Arahkan `.env` ke database MySQL yang sama lalu jalankan `php artisan migrate` (atau `/pasang` tidak diperlukan karena
 sudah ada akun). Nama tabel & kolom **tidak berubah**, tabel yang sudah ada dilewati. Password lama (format

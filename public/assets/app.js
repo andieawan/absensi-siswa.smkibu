@@ -92,3 +92,29 @@
     });
   });
 })();
+
+// ---- PWA: daftarkan service worker & tombol "Pasang Aplikasi" ----
+(function () {
+  'use strict';
+  var meta = document.querySelector('meta[name="sw-url"]');
+  if ('serviceWorker' in navigator && meta && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(meta.content).catch(function () {});
+    });
+  }
+  var btn = document.getElementById('pwa-install');
+  var deferred = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    if (btn) btn.classList.remove('hide');
+  });
+  if (btn) {
+    btn.addEventListener('click', function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.finally(function () { deferred = null; btn.classList.add('hide'); });
+    });
+  }
+  window.addEventListener('appinstalled', function () { if (btn) btn.classList.add('hide'); });
+})();

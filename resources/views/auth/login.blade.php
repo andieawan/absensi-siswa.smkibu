@@ -11,6 +11,7 @@
         <div class="field"><label for="pw">Password</label><input id="pw" type="password" name="password" autocomplete="current-password" required></div>
         <button class="btn btn-pri" style="width:100%">{{ $switching ? 'Pindah Akun' : 'Masuk' }}</button>
     </form>
+    @unless($switching)<button type="button" class="btn btn-sm hide" id="pwa-install" style="width:100%;margin-top:10px">📲 Pasang Aplikasi di Perangkat Ini</button>@endunless
     @if($switching)<p style="margin-top:14px"><a href="{{ route('dashboard') }}">&larr; Batal, kembali</a></p>@endif
 </div>
 @endsection
