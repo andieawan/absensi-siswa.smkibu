@@ -26,7 +26,7 @@ Format hash password `sha256:<salt>:<hash>` **tidak berubah**, jadi akun dari ve
 
 ## Struktur
 ```
-php/
+./
 ├─ app/                  ← kode server (dilindungi .htaccess deny)
 │  ├─ config.example.php    → salin jadi config.php
 │  ├─ Web.php Svc.php Analytics.php Xlsx.php Letters.php   ← antarmuka web
@@ -41,8 +41,8 @@ php/
 ```
 
 ## Deploy (cPanel)
-1. Unggah isi `php/public/` ke `public_html/` (termasuk `.htaccess`, `assets/`, `api/`).
-2. Unggah folder `php/app/` **sejajar** dengan `public_html` (lebih aman) atau ke dalam `public_html/app/` (tetap aman: `app/.htaccess` menolak akses).
+1. Unggah isi `public/` ke `public_html/` (termasuk `.htaccess`, `assets/`, `api/`).
+2. Unggah folder `app/` dan `cli/` **sejajar** dengan `public_html` (lebih aman) atau ke dalam `public_html/app/` (tetap aman: `app/.htaccess` menolak akses).
 3. Salin `app/config.example.php` → `app/config.php`; isi kredensial MySQL serta `admin_username` & `admin_password` (min. 10 karakter).
 4. Buka situs → login admin. Tabel dibuat otomatis. **Hapus `admin_password` dari `config.php`** lalu ganti password.
 5. Di **Admin Panel**: isi Pengaturan Sekolah → tambah **Kelas & Mapel** → **impor siswa** → tambah akun guru (set wali kelas) → Pasangan Mapel.
@@ -52,7 +52,6 @@ Ingin mencoba dengan data contoh? `php cli/seed_demo.php` (hanya jika belum ada 
 
 ## Uji lokal
 ```bash
-cd php
 DB_DRIVER=sqlite ADMIN_USERNAME=admin ADMIN_PASSWORD=RahasiaKuat123 php -S 127.0.0.1:8080 -t public public/router.php
 # lalu buka http://127.0.0.1:8080
 ```
@@ -62,8 +61,9 @@ Integrasi Google (login Google, Google Docs, Google Sheets) memakai OAuth di sis
 - **Surat** (peringatan, panggilan orang tua, laporan semester) → halaman siap cetak (`Ctrl+P` → *Simpan sebagai PDF*), kata-kata sama seperti versi lama. Alamat/NIP tidak diisi otomatis (dulu berupa contoh palsu); nama Kepsek/BK diambil dari Pengaturan.
 - **Google Sheets** → unduh **Excel (.xlsx)** (bisa dibuka/diunggah ke Google Sheets).
 
-## Migrasi dari versi Node/React
-Arahkan `config.php` ke database MySQL yang sama — skema identik. Folder `src/`, `server/`, `server.ts` (React/Node) tidak dipakai lagi dan bisa dihapus setelah Anda yakin.
+## Riwayat & rencana
+Kode React/Node lama sudah dihapus dari repo (masih ada di riwayat git sebelum commit pembersihan). Database MySQL dari versi lama tetap kompatibel — cukup arahkan `config.php` ke sana.
+Struktur `app/` (Repo, Svc, Rules, Analytics, pages) sengaja dipisah per tanggung jawab agar mudah dipindah ke Laravel (Eloquent, Controller, Blade) bila nanti diperlukan.
 
 ## Keamanan
 CSRF pada semua form POST, cookie `HttpOnly` + `SameSite=Lax` (+`Secure` di HTTPS), semua output di-escape, query berparameter (PDO), token delegasi/wali acak 192-bit, halaman publik dikirim `noindex`.
@@ -71,7 +71,7 @@ Pasang **HTTPS** di hosting. Jika di balik proxy/Cloudflare set `trust_proxy => 
 
 ## Nginx (tanpa .htaccess)
 ```nginx
-root /var/www/php/public;
+root /var/www/absensi/public;
 index index.php;
 location /api/ { try_files $uri /api/index.php$is_args$args; }
 location / { try_files $uri $uri/ /index.php$is_args$args; }
