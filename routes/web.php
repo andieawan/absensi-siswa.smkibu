@@ -126,6 +126,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::get('/pengaturan', [Admin\SettingController::class, 'index'])->name('settings');
         Route::put('/pengaturan', [Admin\SettingController::class, 'update'])->name('settings.update');
         Route::post('/backup', [Admin\SettingController::class, 'backup'])->name('backup');
+        Route::post('/perbarui-database', [Admin\SettingController::class, 'migrate'])->name('migrate');
         Route::get('/backup/{file}', [Admin\SettingController::class, 'download'])->name('backup.download');
         Route::get('/ekspor-json', [Admin\SettingController::class, 'json'])->name('json');
     });

@@ -23,7 +23,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        return view('admin.settings', ['files' => array_slice(BackupService::files(), 0, 10)]);
+        return view('admin.settings', ['files' => array_slice(BackupService::files(), 0, 10), 'pending' => \App\Support\DbUpdate::pending()]);
     }
 
     public function update(Request $request)
@@ -66,5 +66,19 @@ class SettingController extends Controller
         ];
 
         return response()->streamDownload(fn () => print (json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)), 'absensi_'.Dates::today().'.json', ['Content-Type' => 'application/json']);
+    }
+
+    /** Perbarui struktur database setelah mengunggah versi baru (tanpa SSH). Backup dibuat lebih dulu. */
+    public function migrate()
+    {
+        $n = count(\App\Support\DbUpdate::pending());
+        if (! $n) {
+            return back()->with('success', 'Database sudah versi terbaru.');
+        }
+        BackupService::run();
+        \App\Support\DbUpdate::run();
+        \App\Services\Audit::log('Perbarui Database', 'Sistem', $this->me()->nama, "$n migrasi dijalankan");
+
+        return back()->with('success', "Database diperbarui ($n perubahan). Cadangan dibuat sebelum pembaruan.");
     }
 }

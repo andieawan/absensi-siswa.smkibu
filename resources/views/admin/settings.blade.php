@@ -1,6 +1,10 @@
 @extends('layouts.app', ['title' => 'Pengaturan & Backup'])
 @section('content')
 @include('admin._tabs')
+@if($pending)
+<div class="alert alert-warn"><span class="alert-ic" aria-hidden="true">!</span><span class="alert-txt"><b>Ada {{ count($pending) }} pembaruan struktur database</b> dari versi aplikasi yang baru diunggah. Fitur baru (mis. modul BK, No. HP orang tua) baru bisa dipakai setelah diperbarui.
+    <form method="post" action="{{ route('admin.migrate') }}" style="margin-top:8px" data-confirm="Perbarui database sekarang? Backup otomatis dibuat lebih dulu.">@csrf<button class="btn btn-sm btn-pri" data-busy="Memperbarui…">Perbarui Database Sekarang</button></form></span></div>
+@endif
 <div class="grid g2" style="align-items:start">
     <form method="post" action="{{ route('admin.settings.update') }}" class="card">@csrf @method('PUT')
         <h2>Pengaturan Sekolah</h2>

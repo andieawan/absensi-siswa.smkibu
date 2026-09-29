@@ -5,3 +5,6 @@
         @endforeach
     </div>
 </div>
+@if(! request()->routeIs('admin.settings') && ($pendingDb = \App\Support\DbUpdate::pending()))
+<div class="alert alert-warn"><span class="alert-ic" aria-hidden="true">!</span><span class="alert-txt">Ada {{ count($pendingDb) }} pembaruan database yang belum dipasang. <a href="{{ route('admin.settings') }}">Buka Pengaturan → Perbarui Database</a>.</span></div>
+@endif

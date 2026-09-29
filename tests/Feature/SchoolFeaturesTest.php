@@ -122,4 +122,15 @@ class SchoolFeaturesTest extends TestCase
         $this->assertCount(1, $skip);
         $this->assertSame(['Pak Slamet', '6285711112222'], [Student::where('nis', 'N-100')->value('nama_ortu'), Student::where('nis', 'N-100')->value('telp_ortu')]);
     }
+
+    public function test_admin_can_apply_pending_database_updates_without_ssh(): void
+    {
+        $this->actingAs($this->admin)->post('/admin/perbarui-database')->assertSessionHas('success', 'Database sudah versi terbaru.');
+        \Illuminate\Support\Facades\DB::table('migrations')->where('migration', '2026_09_30_000100_add_bk_and_parent_contact')->delete();
+        $this->actingAs($this->admin)->get('/admin/guru')->assertSee('pembaruan database');
+        $this->actingAs($this->admin)->get('/admin/pengaturan')->assertSee('Perbarui Database Sekarang');
+        $this->actingAs($this->wali)->post('/admin/perbarui-database')->assertForbidden();
+        $this->actingAs($this->admin)->post('/admin/perbarui-database')->assertSessionHas('success');
+        $this->assertSame([], \App\Support\DbUpdate::pending());
+    }
 }

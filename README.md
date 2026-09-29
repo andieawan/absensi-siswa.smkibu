@@ -40,7 +40,7 @@ database/migrations/        skema (tabel yang sudah ada dilewati → DB versi la
 database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
 resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
 routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
-tests/                      63 tes PHPUnit (fitur & aturan bisnis)
+tests/                      64 tes PHPUnit (fitur & aturan bisnis)
 ```
 
 ## Kebutuhan
@@ -78,6 +78,11 @@ Tanpa cron pun backup tetap berjalan otomatis tiap 24 jam saat ada yang login.
 5. Buka **`https://domain-anda/pasang`** → klik *Pasang Sekarang*. Tabel dibuat dan akun admin pertama dibuat.
    Halaman ini otomatis tertutup begitu sudah ada akun.
 
+## Memperbarui ke versi baru (cPanel tanpa SSH)
+Unggah/timpa berkas aplikasi (kecuali `.env` dan `storage/`), lalu login sebagai Admin → **Pengaturan** → klik
+**Perbarui Database Sekarang** (muncul otomatis bila ada perubahan struktur; backup dibuat lebih dulu).
+Dengan SSH cukup `php artisan migrate --force`.
+
 ## Aplikasi di HP (PWA)
 Aplikasi bisa dipasang ke layar utama HP/laptop seperti aplikasi biasa (ikon sendiri, layar penuh, pintasan "Isi Absensi" & "Input Nilai"):
 - **Android / Chrome / Edge:** buka situs → tombol **Pasang Aplikasi** (di halaman login atau menu atas), atau menu ⋮ → *Instal aplikasi*.
@@ -108,7 +113,7 @@ catatan BK menyimpan kelas saat kejadian. Setelah itu atur ulang Wali Kelas di A
 | `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
 | `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
 | `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh |
-| `vendor/bin/phpunit` | Jalankan 63 tes otomatis (SQLite in-memory) |
+| `vendor/bin/phpunit` | Jalankan 64 tes otomatis (SQLite in-memory) |
 
 ## Pengganti fitur Google
 Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**
