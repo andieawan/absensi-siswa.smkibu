@@ -1,80 +1,94 @@
-# Absensi Siswa — versi PHP penuh
+# Absensi Siswa — SMK Islam Bustanul Ulum Pakusari (Laravel 13)
 
-Seluruh aplikasi (tampilan **dan** server) ditulis ulang dalam **PHP murni**: halaman dirender di server,
-JavaScript hanya sedikit (tombol "Set Semua Hadir", hitung H/I/S/A, konfirmasi). **Tanpa React, tanpa Node.js,
-tanpa build.** Cukup unggah ke hosting biasa (cPanel/shared hosting: Apache + PHP + MySQL).
+Aplikasi absensi & nilai siswa berbasis **Laravel 13** (PHP 8.3+). Halaman dirender di server dengan Blade;
+JavaScript hanya sedikit (tanpa npm/Vite, tanpa langkah build). Database MySQL/MariaDB (disarankan) atau SQLite.
 
 ## Fitur
-| Halaman | Isi |
+| Menu | Isi |
 |---|---|
-| **Login** | Cookie sesi (HttpOnly, SameSite), batas 10 gagal / 15 menit per IP+username, **Ganti Akun** (verifikasi ulang password), ganti password mandiri |
-| **Dashboard** | 3 varian: Wali Kelas · Per Mapel · Sekolah (Kepsek). KPI H/I/S/A, ringkasan & saran otomatis (ambang batas), tren per tanggal, deteksi pola absen berkala (hari sama, jarak 10–18 hari), daftar "Perlu Perhatian" + sinyal absen+nilai turun |
-| **Absensi** | Wali (harian) / Per Mapel, tombol H·I·S·A + catatan, UPSERT, peringatan 85%, riwayat sesi (hapus ≤ 7 hari, terkunci setelahnya), **tautan delegasi Ketua Kelas** (maks. 24 jam), unduh Excel |
-| **Nilai** | Input/edit kegiatan (angka 0–100 atau huruf A–E), daftar kegiatan (hapus ≤ 7 hari), rekap + rata-rata, unduh Excel |
-| **Riwayat Siswa (360)** | Profil, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, dossier nilai, **akses Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
-| **Integrasi BK** | Input absensi manual BK, rekap ketidakhadiran per kelas, surat panggilan, unduh Excel |
-| **Admin Panel** | Akun guru (tambah/ubah/reset/nonaktifkan) · Data siswa (tambah/ubah/**impor xlsx/csv**) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · Log Aktivitas · Pengaturan & Backup |
-| **Publik** | `?p=delegasi&token=kk_…` (Ketua Kelas, tanpa login) dan `?p=wali&token=wm_…` (Wali Murid, baca-saja, hanya kehadiran) |
+| **Login** | Sesi Laravel, batas 10 gagal / 15 menit, **Ganti Akun** (verifikasi ulang password), ganti password (sesi di perangkat lain otomatis keluar) |
+| **Dashboard** | Wali Kelas · Per Mapel · Sekolah (Kepsek). KPI H/I/S/A, ringkasan & saran otomatis, tren, pola absen berkala (hari sama, jarak 10–18 hari), daftar "Perlu Perhatian" + sinyal nilai turun |
+| **Absensi** | Harian (wali) / per mapel, tombol H·I·S·A + catatan, simpan ulang = update, peringatan 85%, riwayat sesi (hapus ≤ 7 hari), **tautan delegasi Ketua Kelas** (maks. 24 jam), unduh Excel |
+| **Nilai** | Input/edit kegiatan (angka 0–100 / huruf A–E), daftar kegiatan (hapus ≤ 7 hari), rekap + rata-rata, Excel, laporan cetak |
+| **Riwayat Siswa** | Profil, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, nilai, **Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
+| **Integrasi BK** | Input absensi manual BK, rekap ketidakhadiran per kelas, Excel |
+| **Admin Panel** | Akun guru · Data siswa (+ impor xlsx/csv) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · Log Aktivitas · Pengaturan & Backup |
+| **Publik** | `/presensi/{token}` (Ketua Kelas, tanpa login) dan `/wali/{token}` (Wali Murid, baca-saja). Tautan lama `/?token=` & `/?wali=` tetap berfungsi |
 
-Aturan bisnis sama dengan versi sebelumnya: batas 7 hari (non-admin), syarat kehadiran 85%, otorisasi guru
-(wali kelas untuk absen harian; pasangan / kelas+mapel untuk absen mapel), token delegasi 24 jam, audit log 500 baris.
-Format hash password `sha256:<salt>:<hash>` **tidak berubah**, jadi akun dari versi lama tetap bisa login.
+Aturan bisnis: batas ubah/hapus 7 hari (non-admin), syarat kehadiran 85%, otorisasi guru (wali kelas untuk absen harian;
+pasangan atau kelas+mapel yang diampu untuk absen mapel/nilai), token delegasi ≤ 24 jam, audit log 500 baris terakhir.
+
+## Struktur kode
+```
+app/
+├─ Http/Controllers/        Dashboard, Attendance, Grade, Student, Bk, Letter, Export, Public, Auth, Install
+│  └─ Admin/                Teacher, Student, Master (kelas & mapel), Pairing, Hardcopy, Log, Setting
+├─ Models/                  User, SchoolClass, Subject, Student, Attendance, GradeActivity, GradeValue, Pairing, …
+├─ Services/                Rules (aturan bisnis), Analytics, AttendanceService, GradeService, AccessService,
+│                           AdminService, BackupService, Sequence, Audit, Assignments
+└─ Support/                 Dates, Passwords, Xlsx (baca/tulis .xlsx tanpa library luar)
+config/absensi.php          pengaturan khusus aplikasi
+database/migrations/        skema (tabel yang sudah ada dilewati → DB versi lama langsung terpakai)
+database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
+resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
+routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
+tests/                      36 tes PHPUnit (fitur & aturan bisnis)
+```
 
 ## Kebutuhan
-- PHP **8.1+**: `pdo_mysql` (atau `pdo_sqlite`), `mbstring`, `zip` (untuk Excel; tanpa `zip` impor/ekspor Excel dinonaktifkan, CSV tetap bisa)
-- MySQL/MariaDB (database kosong sudah dibuat; tabel dibuat otomatis)
+- PHP **8.3+** dengan `pdo_mysql` (atau `pdo_sqlite`), `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `fileinfo`, `zip` (untuk Excel)
+- Composer 2 (atau unggah folder `vendor/` yang sudah jadi)
+- MySQL/MariaDB (database kosong sudah dibuat)
 
-## Struktur
-```
-./
-├─ app/                  ← kode server (dilindungi .htaccess deny)
-│  ├─ config.example.php    → salin jadi config.php
-│  ├─ Web.php Svc.php Analytics.php Xlsx.php Letters.php   ← antarmuka web
-│  ├─ pages/                ← satu berkas per halaman
-│  └─ Core.php Db.php Repo.php Rules.php Backup.php Api.php Access.php bootstrap.php
-├─ public/               ← web root
-│  ├─ index.php             → front controller (/?p=dashboard, …)
-│  ├─ assets/app.css app.js
-│  ├─ api/index.php         → API JSON opsional (/api/*), tidak dipakai antarmuka web
-│  └─ .htaccess router.php
-└─ cli/backup.php seed_demo.php
-```
-
-## Deploy (cPanel)
-1. Unggah isi `public/` ke `public_html/` (termasuk `.htaccess`, `assets/`, `api/`).
-2. Unggah folder `app/` dan `cli/` **sejajar** dengan `public_html` (lebih aman) atau ke dalam `public_html/app/` (tetap aman: `app/.htaccess` menolak akses).
-3. Salin `app/config.example.php` → `app/config.php`; isi kredensial MySQL serta `admin_username` & `admin_password` (min. 10 karakter).
-4. Buka situs → login admin. Tabel dibuat otomatis. **Hapus `admin_password` dari `config.php`** lalu ganti password.
-5. Di **Admin Panel**: isi Pengaturan Sekolah → tambah **Kelas & Mapel** → **impor siswa** → tambah akun guru (set wali kelas) → Pasangan Mapel.
-6. (Opsional) cron backup: `0 2 * * * /usr/bin/php /home/USER/cli/backup.php` (atau andalkan backup otomatis saat login, tiap 24 jam).
-
-Ingin mencoba dengan data contoh? `php cli/seed_demo.php` (hanya jika belum ada kelas) — mencetak password akun contoh.
-
-## Uji lokal
+## Instalasi (VPS / hosting dengan SSH)
 ```bash
-DB_DRIVER=sqlite ADMIN_USERNAME=admin ADMIN_PASSWORD=RahasiaKuat123 php -S 127.0.0.1:8080 -t public public/router.php
-# lalu buka http://127.0.0.1:8080
+git clone https://github.com/andieawan/absensi-siswa.smkibu.git absensi && cd absensi
+composer install --no-dev --optimize-autoloader
+cp .env.example .env && php artisan key:generate
+# isi DB_* serta ADMIN_USERNAME / ADMIN_PASSWORD (min. 10 karakter) di .env
+php artisan migrate --force && php artisan db:seed --force
+php artisan config:cache && php artisan route:cache && php artisan view:cache
 ```
+Arahkan document root web server ke folder **`public/`**. Pastikan `storage/` dan `bootstrap/cache/` dapat ditulis web server.
+Setelah login pertama: hapus `ADMIN_PASSWORD` dari `.env`, lalu ganti password lewat menu **Password**.
+
+Cron (backup harian 02.00 WIB lewat penjadwal Laravel):
+```
+* * * * * cd /path/absensi && php artisan schedule:run >> /dev/null 2>&1
+```
+Tanpa cron pun backup tetap berjalan otomatis tiap 24 jam saat ada yang login.
+
+## Instalasi di cPanel tanpa SSH
+1. Di komputer lain (atau ambil paket rilis yang sudah berisi `vendor/`), jalankan `composer install --no-dev`.
+2. Unggah seluruh folder proyek ke `/home/USER/absensi` (**di luar** `public_html`).
+3. Pindahkan isi `absensi/public/` ke `public_html/`, lalu ubah dua baris di `public_html/index.php`:
+   `__DIR__.'/../storage/…'` → `__DIR__.'/../absensi/storage/…'`, `__DIR__.'/../vendor/…'` → `__DIR__.'/../absensi/vendor/…'`,
+   `__DIR__.'/../bootstrap/app.php'` → `__DIR__.'/../absensi/bootstrap/app.php'`.
+   (Atau, bila cPanel mengizinkan, cukup ubah document root domain ke `absensi/public`.)
+4. Salin `.env.example` → `.env`; isi `APP_KEY` (buat dengan `php artisan key:generate --show` di komputer mana pun, atau
+   `base64:` + 32 byte acak), `DB_*`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`.
+5. Buka **`https://domain-anda/pasang`** → klik *Pasang Sekarang*. Tabel dibuat dan akun admin pertama dibuat.
+   Halaman ini otomatis tertutup begitu sudah ada akun.
+
+## Pindah dari versi lama (React/Node atau PHP murni)
+Arahkan `.env` ke database MySQL yang sama lalu jalankan `php artisan migrate` (atau `/pasang` tidak diperlukan karena
+sudah ada akun). Nama tabel & kolom **tidak berubah**, tabel yang sudah ada dilewati. Password lama (format
+`sha256:salt:hash`) tetap bisa dipakai login dan otomatis diganti ke bcrypt saat login berhasil. Tabel lama `sessions`
+dan `login_attempts` tidak dipakai lagi (sesi disimpan di `storage/`) dan boleh dihapus.
+
+## Perintah berguna
+| Perintah | Fungsi |
+|---|---|
+| `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
+| `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
+| `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh |
+| `vendor/bin/phpunit` | Jalankan 36 tes otomatis (SQLite in-memory) |
 
 ## Pengganti fitur Google
-Integrasi Google (login Google, Google Docs, Google Sheets) memakai OAuth di sisi browser dan tidak bisa dibawa apa adanya ke PHP murni. Penggantinya:
-- **Surat** (peringatan, panggilan orang tua, laporan semester) → halaman siap cetak (`Ctrl+P` → *Simpan sebagai PDF*), kata-kata sama seperti versi lama. Alamat/NIP tidak diisi otomatis (dulu berupa contoh palsu); nama Kepsek/BK diambil dari Pengaturan.
-- **Google Sheets** → unduh **Excel (.xlsx)** (bisa dibuka/diunggah ke Google Sheets).
-
-## Riwayat & rencana
-Kode React/Node lama sudah dihapus dari repo (masih ada di riwayat git sebelum commit pembersihan). Database MySQL dari versi lama tetap kompatibel — cukup arahkan `config.php` ke sana.
-Struktur `app/` (Repo, Svc, Rules, Analytics, pages) sengaja dipisah per tanggung jawab agar mudah dipindah ke Laravel (Eloquent, Controller, Blade) bila nanti diperlukan.
+Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**
+(`Ctrl+P` → *Simpan sebagai PDF*; nama Kepsek/BK diambil dari Pengaturan, alamat/NIP diisi manual) dan **unduhan Excel (.xlsx)**.
 
 ## Keamanan
-CSRF pada semua form POST, cookie `HttpOnly` + `SameSite=Lax` (+`Secure` di HTTPS), semua output di-escape, query berparameter (PDO), token delegasi/wali acak 192-bit, halaman publik dikirim `noindex`.
-Pasang **HTTPS** di hosting. Jika di balik proxy/Cloudflare set `trust_proxy => true`.
-
-## Nginx (tanpa .htaccess)
-```nginx
-root /var/www/absensi/public;
-index index.php;
-location /api/ { try_files $uri /api/index.php$is_args$args; }
-location / { try_files $uri $uri/ /index.php$is_args$args; }
-location ~ \.php$ { include fastcgi_params; fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; fastcgi_pass unix:/run/php/php-fpm.sock; }
-location ~ ^/app/ { deny all; }
-```
+CSRF & escaping bawaan Laravel, password bcrypt, sesi dicabut saat password diganti/direset atau akun dinonaktifkan,
+pembatasan laju login & halaman publik, token delegasi/wali acak 192-bit, header keamanan (X-Frame-Options, nosniff).
+Gunakan **HTTPS** dan `APP_DEBUG=false` di produksi. Di balik Cloudflare/proxy set `TRUST_PROXIES=true`.
