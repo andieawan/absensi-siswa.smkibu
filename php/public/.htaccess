@@ -1,0 +1,21 @@
+# Apache (cPanel / shared hosting). Aktifkan mod_rewrite.
+RewriteEngine On
+
+# Teruskan header Authorization ke PHP (sering dibuang di CGI/FastCGI)
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# /api/* -> api/index.php
+RewriteRule ^api/index\.php$ - [L]
+RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
+
+# Frontend SPA: semua yang bukan file/folder -> index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
