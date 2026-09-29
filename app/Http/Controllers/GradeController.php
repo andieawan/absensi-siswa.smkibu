@@ -29,6 +29,10 @@ class GradeController extends Controller
             $vals[$v->activity_id][$v->student_id] = $v->nilai;
         }
         $editing = $request->query('act') ? $acts->firstWhere('id', $request->query('act')) : null;
+        if ($editing && ! Rules::gradeEditable($u, $editing)) {
+            $editing = null;
+            session()->now('warning', 'Kegiatan itu diinput lebih dari 7 hari lalu dan sudah dikunci.');
+        }
         $auth = $classId && $subjectId ? Rules::teacherAuthorization($u, $subjectId, $classId) : ['allowed' => false, 'error' => 'Pilih kelas dan mata pelajaran.'];
 
         return view('grades.index', compact('classes', 'subjects', 'classId', 'subjectId', 'tab', 'students', 'acts', 'vals', 'editing', 'auth') + ['today' => Dates::today()]);

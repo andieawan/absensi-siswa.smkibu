@@ -43,6 +43,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('/absensi', [AttendanceController::class, 'store'])->name('attendance.store');
     Route::post('/absensi/hapus', [AttendanceController::class, 'destroy'])->name('attendance.destroy');
     Route::post('/absensi/delegasi', [AttendanceController::class, 'delegate'])->name('attendance.delegate');
+    Route::post('/absensi/delegasi/{token}/cabut', [AttendanceController::class, 'revoke'])->name('attendance.revoke');
 
     Route::get('/nilai', [GradeController::class, 'index'])->name('grades');
     Route::post('/nilai', [GradeController::class, 'store'])->name('grades.store');

@@ -21,7 +21,7 @@ class AttendanceService
         if (! Dates::valid($tanggal)) {
             throw new UserError('Format tanggal harus YYYY-MM-DD yang valid.');
         }
-        if (Dates::daysSince($tanggal) < -1) {
+        if (Dates::isFuture($tanggal)) {
             throw new UserError('Tanggal sesi absensi tidak boleh berada di masa depan.');
         }
         match ($via) {

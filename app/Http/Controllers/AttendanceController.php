@@ -58,7 +58,7 @@ class AttendanceController extends Controller
             }
             krsort($sessions);
             $data['sessions'] = $sessions;
-            $data['activeTokens'] = DelegationToken::where('class_id', $c['classId'])->where('status', 'aktif')->where('expires_at_millis', '>', Dates::nowMillis())->count();
+            $data['activeTokens'] = DelegationToken::where('class_id', $c['classId'])->where('status', 'aktif')->where('expires_at_millis', '>', Dates::nowMillis())->orderByDesc('created_at')->get();
             $data['newToken'] = session('new_token');
         }
 
@@ -84,6 +84,14 @@ class AttendanceController extends Controller
         $n = AttendanceService::deleteSession($this->me(), $c['classId'], $c['subjectId'], $tgl);
 
         return $this->back($c, ['tab' => 'riwayat'])->with('success', "Sesi $tgl dihapus ($n data).");
+    }
+
+    public function revoke(Request $request, DelegationToken $token)
+    {
+        $c = $this->context($request);
+        AccessService::revokeDelegation($this->me(), $token);
+
+        return $this->back($c, ['tab' => 'riwayat'])->with('success', 'Tautan delegasi dicabut. Ketua kelas tidak bisa memakainya lagi.');
     }
 
     public function delegate(Request $request)

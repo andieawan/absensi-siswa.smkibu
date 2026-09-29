@@ -44,14 +44,27 @@ class DashboardController extends Controller
         $subject = $subjects->firstWhere('id', $subjectId);
 
         $scope = $variant === 'mapel' ? $subjectId : null;
-        $records = Attendance::query()->scope($classId ?: null, $scope)->get(['student_id', 'class_id', 'subject_id', 'tanggal', 'status'])->toArray();
-        $students = Student::when($classId, fn ($q) => $q->where('class_id', $classId))->get(['id', 'nis', 'nama', 'class_id'])->toArray();
-        $grades = GradeValue::whereIn('student_id', array_column($students, 'id'))->get(['student_id', 'nilai'])->toArray();
+        $base = fn () => Attendance::query()->scope($classId ?: null, $scope);
 
-        $counts = Analytics::counts($records);
-        $trend = Analytics::trend($records);
-        $patterns = Analytics::patterns($records, $students, $classId ?: null, $scope);
-        $attention = Analytics::attention($records, $students, $grades, $classId ?: null, $scope);
+        // Angka & tren dihitung langsung oleh database (hemat memori untuk data satu tahun penuh).
+        $byStatus = $base()->selectRaw('status, COUNT(*) AS n')->groupBy('status')->pluck('n', 'status');
+        $total = (int) $byStatus->sum();
+        $counts = [
+            'total' => $total, 'hadir' => (int) ($byStatus['H'] ?? 0), 'izin' => (int) ($byStatus['I'] ?? 0),
+            'sakit' => (int) ($byStatus['S'] ?? 0), 'alpa' => (int) ($byStatus['A'] ?? 0),
+            'rate' => $total > 0 ? ($byStatus['H'] ?? 0) / $total * 100 : 100.0,
+        ];
+        $trend = $base()->selectRaw("tanggal, COUNT(*) AS total, SUM(CASE WHEN status = 'H' THEN 1 ELSE 0 END) AS h")
+            ->groupBy('tanggal')->orderBy('tanggal')->get()
+            ->map(fn ($r) => ['date' => $r->tanggal, 'total' => (int) $r->total, 'h' => (int) $r->h, 'pct' => (int) round($r->h / $r->total * 100)])->all();
+
+        // Pola & "Perlu Perhatian" hanya butuh baris tidak hadir (I/S/A).
+        $absences = $base()->where('status', '!=', 'H')->get(['student_id', 'class_id', 'subject_id', 'tanggal', 'status'])->toArray();
+        $students = Student::when($classId, fn ($q) => $q->where('class_id', $classId))->get(['id', 'nis', 'nama', 'class_id'])->toArray();
+        $patterns = Analytics::patterns($absences, $students, $classId ?: null, $scope);
+        $candidates = array_column(Analytics::attention($absences, $students, [], $classId ?: null, $scope), 'student_id');
+        $grades = $candidates ? GradeValue::whereIn('student_id', $candidates)->get(['student_id', 'nilai'])->toArray() : [];
+        $attention = Analytics::attention($absences, $students, $grades, $classId ?: null, $scope);
         $dual = count(array_filter($attention, fn ($a) => $a['grade_drop']));
         $scopeLabel = match ($variant) {
             'wali' => 'Kelas Wali '.($class->name ?? ''),

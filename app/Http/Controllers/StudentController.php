@@ -28,7 +28,8 @@ class StudentController extends Controller
         $data = ['classes' => SchoolClass::orderBy('name')->get(), 'list' => $list, 'q' => $q, 'fc' => $fc];
         $student = $request->query('id') ? Student::with('schoolClass')->find((int) $request->query('id')) : null;
         if ($student) {
-            $acts = GradeActivity::all()->keyBy('id');
+            $myGrades = GradeValue::where('student_id', $student->id)->get();
+            $acts = GradeActivity::whereIn('id', $myGrades->pluck('activity_id'))->get()->keyBy('id');
             $data += [
                 'student' => $student,
                 'stats' => Rules::attendanceStats($student->id),
@@ -37,7 +38,7 @@ class StudentController extends Controller
                 'absences' => Attendance::where('student_id', $student->id)->where('status', '!=', 'H')->orderByDesc('tanggal')->get(),
                 'subjectNames' => Subject::pluck('name', 'id'),
                 'acts' => $acts,
-                'grades' => GradeValue::where('student_id', $student->id)->get()->filter(fn ($g) => isset($acts[$g->activity_id]))
+                'grades' => $myGrades->filter(fn ($g) => isset($acts[$g->activity_id]))
                     ->sortByDesc(fn ($g) => $acts[$g->activity_id]->tanggal_kegiatan),
                 'canParent' => AccessService::canManageParentAccess($u, $student),
                 'canLetter' => $u->hasRole('admin', 'superadmin', 'bk', 'kepsek') || $u->isWaliOf($student->class_id),

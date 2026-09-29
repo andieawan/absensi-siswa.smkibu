@@ -54,6 +54,7 @@ class GradeTest extends TestCase
 
         $this->save(['tanggal' => $this->daysAgo(12)]);
         $old = GradeActivity::firstOrFail();
+        $old->update(['created_at' => gmdate('Y-m-d H:i:s', time() - 8 * 86400)]); // diinput 8 hari lalu
         $this->post("/nilai/{$old->id}/hapus")->assertSessionHas('error', fn ($m) => str_contains($m, '7 hari'));
         $this->actingAs($this->admin)->post("/nilai/{$old->id}/hapus")->assertSessionHas('success');
     }

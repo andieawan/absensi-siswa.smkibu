@@ -69,7 +69,15 @@
                 <select name="hours" style="width:auto">@foreach([1, 3, 6, 12, 24] as $h)<option value="{{ $h }}" @selected($h === 24)>Berlaku {{ $h }} jam</option>@endforeach</select>
                 <button class="btn btn-pri" @disabled(! $auth['allowed'])>Buat Tautan Delegasi</button>
             </form>
-            @if($activeTokens)<p class="mut" style="font-size:12px;margin-top:12px">{{ $activeTokens }} tautan masih aktif untuk kelas ini (kedaluwarsa otomatis).</p>@endif
+            @if($activeTokens->isNotEmpty())
+                <div style="margin-top:12px"><small class="mut">Tautan yang masih aktif:</small>
+                @foreach($activeTokens as $t)
+                    <div class="row" style="justify-content:space-between;border-top:1px solid var(--line2);padding:6px 0">
+                        <span><code class="mono" style="font-size:11px">{{ substr($t->token, 0, 12) }}…</code> <small>berlaku sampai {{ \App\Support\Dates::local($t->expiryMillis()) }} WIB</small></span>
+                        <form method="post" action="{{ route('attendance.revoke', $t->token) }}" class="inline" data-confirm="Cabut tautan ini? Ketua kelas tidak bisa memakainya lagi.">@csrf {!! $hidden() !!}<button class="btn btn-sm btn-danger">Cabut</button></form>
+                    </div>
+                @endforeach</div>
+            @endif
         </div>
     @endif
     <div class="card card-tight">

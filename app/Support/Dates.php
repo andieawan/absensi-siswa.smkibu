@@ -35,6 +35,12 @@ class Dates
         return self::parse($ymd) !== null;
     }
 
+    /** Tanggal setelah hari ini (WIB)? String YYYY-MM-DD bisa dibandingkan langsung. */
+    public static function isFuture(string $ymd): bool
+    {
+        return $ymd > self::today();
+    }
+
     /** Selisih hari (dibulatkan ke bawah) antara sekarang dan tanggal. Negatif = masa depan. */
     public static function daysSince(string $ymd): int
     {

@@ -29,6 +29,18 @@ class AdminService
         return $roles;
     }
 
+    /** Satu kelas hanya boleh punya satu wali kelas. */
+    private static function ensureSingleWali(?int $classId, ?int $exceptUserId = null): void
+    {
+        if (! $classId) {
+            return;
+        }
+        $other = User::where('kelas_wali_id', $classId)->when($exceptUserId, fn ($q) => $q->where('id', '!=', $exceptUserId))->first();
+        if ($other) {
+            throw new UserError("Kelas ini sudah punya wali kelas: {$other->nama}. Lepaskan dulu tugas wali dari akun tersebut.");
+        }
+    }
+
     public static function addTeacher(User $actor, array $in): User
     {
         $username = strtolower(trim((string) ($in['username'] ?? '')));
@@ -38,6 +50,7 @@ class AdminService
         if (User::whereRaw('LOWER(username) = ?', [$username])->exists()) {
             throw new UserError("Username '$username' sudah dipakai.");
         }
+        self::ensureSingleWali(($in['kelas_wali_id'] ?? null) ? (int) $in['kelas_wali_id'] : null);
         $u = User::create([
             'username' => $username, 'nama' => trim($in['nama']), 'password_hash' => Passwords::make($in['password']),
             'roles' => self::cleanRoles($actor, (array) ($in['roles'] ?? ['guru'])), 'kelas_wali_id' => ($in['kelas_wali_id'] ?? null) ? (int) $in['kelas_wali_id'] : null,
@@ -55,6 +68,7 @@ class AdminService
         if ($u->id === $actor->id && ! array_intersect($roles, ['admin', 'superadmin'])) {
             throw new UserError('Anda tidak dapat mencabut peran Administrator dari akun Anda sendiri.');
         }
+        self::ensureSingleWali(($in['kelas_wali_id'] ?? null) ? (int) $in['kelas_wali_id'] : null, $u->id);
         $u->update([
             'nama' => trim($in['nama']) ?: $u->nama, 'roles' => $roles, 'kelas_wali_id' => ($in['kelas_wali_id'] ?? null) ? (int) $in['kelas_wali_id'] : null,
             'subjects' => array_map('intval', (array) ($in['subjects'] ?? [])), 'classes' => array_map('intval', (array) ($in['classes'] ?? [])),
@@ -85,7 +99,7 @@ class AdminService
         return $u->is_active;
     }
 
-    public static function saveStudent(User $actor, ?Student $s, array $in): Student
+    public static function saveStudent(User $actor, ?Student $s, array $in, bool $audit = true): Student
     {
         if (! SchoolClass::whereKey($in['class_id'])->exists()) {
             throw new UserError('Kelas tidak valid.');
@@ -105,7 +119,9 @@ class AdminService
             throw new UserError("NIS $nis sudah terdaftar.");
         }
         $s = Student::create($data + ['nis' => $nis]);
-        Audit::log('Tambah Siswa', 'Siswa', $actor->nama, "{$s->nama} (NIS $nis)");
+        if ($audit) {
+            Audit::log('Tambah Siswa', 'Siswa', $actor->nama, "{$s->nama} (NIS $nis)");
+        }
 
         return $s;
     }
@@ -136,13 +152,14 @@ class AdminService
                     if ($nama === '' || ! in_array($jk, ['L', 'P'], true)) {
                         throw new UserError('nama/JK tidak valid');
                     }
-                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => $nama, 'jk' => $jk, 'class_id' => $cid, 'status' => 'aktif']);
+                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => $nama, 'jk' => $jk, 'class_id' => $cid, 'status' => 'aktif'], false);
                     $ok++;
                 } catch (UserError $e) {
                     $skip[] = 'Baris '.($n + 2)." ($nis): ".$e->getMessage();
                 }
             }
         });
+        Audit::log('Impor Siswa', 'Siswa', $actor->nama, "$ok siswa ditambahkan, ".count($skip).' baris dilewati');
 
         return [$ok, $skip];
     }

@@ -27,6 +27,9 @@ class GradeService
         if (! Dates::valid($tanggal)) {
             throw new UserError('Tanggal kegiatan tidak valid.');
         }
+        if (Dates::isFuture($tanggal)) {
+            throw new UserError('Tanggal kegiatan tidak boleh berada di masa depan.');
+        }
         $students = Student::whereIn('id', array_keys($scores))->get()->keyBy('id');
         $rows = [];
         foreach ($scores as $sid => $val) {
@@ -59,6 +62,9 @@ class GradeService
             if ($act && ($act->class_id !== $classId || $act->subject_id !== $subjectId)) {
                 throw new UserError('Kegiatan tidak cocok dengan kelas/mapel terpilih.');
             }
+            if ($act && ! Rules::gradeEditable($user, $act)) {
+                throw new UserError('Kegiatan "'.$act->nama_kegiatan.'" diinput lebih dari 7 hari lalu dan sudah dikunci. Hanya Administrator yang dapat mengubahnya.');
+            }
             if ($act) {
                 $act->update(['nama_kegiatan' => $nama, 'tanggal_kegiatan' => $tanggal, 'tipe_skala' => $tipe]);
             } else {
@@ -67,7 +73,7 @@ class GradeService
                     'nama_kegiatan' => $nama, 'tanggal_kegiatan' => $tanggal, 'tipe_skala' => $tipe, 'created_at' => now('UTC')->format('Y-m-d H:i:s'),
                 ]);
             }
-            GradeValue::where('activity_id', $act->id)->delete();
+            GradeValue::where('activity_id', $act->id)->whereIn('student_id', array_column($rows, 'student_id'))->delete();
             GradeValue::insert(array_map(fn ($r) => $r + ['activity_id' => $act->id], $rows));
 
             return $act;
@@ -80,8 +86,8 @@ class GradeService
     public static function delete(User $user, GradeActivity $act): void
     {
         Rules::requireTeacher($user, $act->subject_id, $act->class_id);
-        if ($act->tanggal_kegiatan && ! Rules::withinEditWindow($act->tanggal_kegiatan) && ! $user->isAdmin()) {
-            throw new UserError("Kegiatan penilaian tanggal {$act->tanggal_kegiatan} melebihi batas penghapusan 7 hari.");
+        if (! Rules::gradeEditable($user, $act)) {
+            throw new UserError("Kegiatan \"{$act->nama_kegiatan}\" diinput lebih dari 7 hari lalu dan sudah dikunci. Hanya Administrator yang dapat menghapusnya.");
         }
         DB::transaction(function () use ($act) {
             GradeValue::where('activity_id', $act->id)->delete();

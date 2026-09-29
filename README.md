@@ -9,13 +9,13 @@ JavaScript hanya sedikit (tanpa npm/Vite, tanpa langkah build). Database MySQL/M
 | **Login** | Sesi Laravel, batas 10 gagal / 15 menit, **Ganti Akun** (verifikasi ulang password), ganti password (sesi di perangkat lain otomatis keluar) |
 | **Dashboard** | Wali Kelas · Per Mapel · Sekolah (Kepsek). KPI H/I/S/A, ringkasan & saran otomatis, tren, pola absen berkala (hari sama, jarak 10–18 hari), daftar "Perlu Perhatian" + sinyal nilai turun |
 | **Absensi** | Harian (wali) / per mapel, tombol H·I·S·A + catatan, simpan ulang = update, peringatan 85%, riwayat sesi (hapus ≤ 7 hari), **tautan delegasi Ketua Kelas** (maks. 24 jam), unduh Excel |
-| **Nilai** | Input/edit kegiatan (angka 0–100 / huruf A–E), daftar kegiatan (hapus ≤ 7 hari), rekap + rata-rata, Excel, laporan cetak |
+| **Nilai** | Input/edit kegiatan (angka 0–100 / huruf A–E), daftar kegiatan (edit/hapus ≤ 7 hari sejak diinput), rekap + rata-rata, Excel, laporan cetak |
 | **Riwayat Siswa** | Profil, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, nilai, **Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
 | **Integrasi BK** | Input absensi manual BK, rekap ketidakhadiran per kelas, Excel |
 | **Admin Panel** | Akun guru · Data siswa (+ impor xlsx/csv) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · Log Aktivitas · Pengaturan & Backup |
 | **Publik** | `/presensi/{token}` (Ketua Kelas, tanpa login) dan `/wali/{token}` (Wali Murid, baca-saja). Tautan lama `/?token=` & `/?wali=` tetap berfungsi |
 
-Aturan bisnis: batas ubah/hapus 7 hari (non-admin), syarat kehadiran 85%, otorisasi guru (wali kelas untuk absen harian;
+Aturan bisnis: batas ubah/hapus 7 hari (non-admin; absensi dihitung dari tanggal sesi, nilai dari waktu input), satu kelas satu wali kelas, syarat kehadiran 85%, otorisasi guru (wali kelas untuk absen harian;
 pasangan atau kelas+mapel yang diampu untuk absen mapel/nilai), token delegasi ≤ 24 jam, audit log 500 baris terakhir.
 
 ## Struktur kode
@@ -61,7 +61,7 @@ Tanpa cron pun backup tetap berjalan otomatis tiap 24 jam saat ada yang login.
 ## Instalasi di cPanel tanpa SSH
 1. Di komputer lain (atau ambil paket rilis yang sudah berisi `vendor/`), jalankan `composer install --no-dev`.
 2. Unggah seluruh folder proyek ke `/home/USER/absensi` (**di luar** `public_html`).
-3. Pindahkan isi `absensi/public/` ke `public_html/`, lalu ubah dua baris di `public_html/index.php`:
+3. Pindahkan isi `absensi/public/` ke `public_html/`, lalu ubah tiga baris di `public_html/index.php`:
    `__DIR__.'/../storage/…'` → `__DIR__.'/../absensi/storage/…'`, `__DIR__.'/../vendor/…'` → `__DIR__.'/../absensi/vendor/…'`,
    `__DIR__.'/../bootstrap/app.php'` → `__DIR__.'/../absensi/bootstrap/app.php'`.
    (Atau, bila cPanel mengizinkan, cukup ubah document root domain ke `absensi/public`.)

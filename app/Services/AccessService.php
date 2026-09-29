@@ -36,6 +36,15 @@ class AccessService
         return $t;
     }
 
+    public static function revokeDelegation(User $user, DelegationToken $t): void
+    {
+        Rules::requireTeacher($user, null, $t->class_id);
+        if ($t->status === 'aktif') {
+            $t->update(['status' => 'dicabut']);
+            Audit::log('Cabut Delegasi', 'Absensi', $user->nama, "Kelas #{$t->class_id}");
+        }
+    }
+
     public static function activeDelegation(string $token): DelegationToken
     {
         $t = $token !== '' ? DelegationToken::find($token) : null;
@@ -58,7 +67,7 @@ class AccessService
         if (! Dates::valid($tanggal)) {
             throw new UserError('Format tanggal tidak valid.');
         }
-        if (Dates::daysSince($tanggal) < -1 || ! Rules::withinEditWindow($tanggal)) {
+        if (Dates::isFuture($tanggal) || ! Rules::withinEditWindow($tanggal)) {
             throw new UserError('Tanggal presensi harus hari ini atau maksimal 7 hari ke belakang.');
         }
         Rules::validateEntries($entries, $t->class_id);

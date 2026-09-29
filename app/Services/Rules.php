@@ -109,6 +109,9 @@ class Rules
             if (! in_array($e['status'] ?? null, ['H', 'I', 'S', 'A'], true)) {
                 throw new UserError("Status '".($e['status'] ?? '')."' tidak valid. Status harus H, I, S, atau A.");
             }
+            if (mb_strlen((string) ($e['notes'] ?? '')) > 200) {
+                throw new UserError('Catatan absensi maksimal 200 karakter.');
+            }
             $s = $students[$e['student_id']] ?? null;
             if (! $s) {
                 throw new UserError("Siswa ID #{$e['student_id']} tidak terdaftar.");
@@ -117,6 +120,17 @@ class Rules
                 throw new UserError("Integritas data gagal: {$s->nama} bukan anggota kelas ini.");
             }
         }
+    }
+
+    /** Kegiatan nilai boleh diubah/dihapus non-admin hanya ≤ 7 hari sejak diinput. */
+    public static function gradeEditable(User $user, \App\Models\GradeActivity $act): bool
+    {
+        if ($user->isAdmin()) {
+            return true;
+        }
+        $created = strtotime(((string) $act->created_at).' UTC');
+
+        return $created !== false && (time() - $created) <= (int) config('absensi.edit_window_days', 7) * 86400;
     }
 
     public static function withinEditWindow(string $tanggal): bool

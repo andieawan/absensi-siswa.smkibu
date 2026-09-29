@@ -5,7 +5,7 @@
     $tipe = old('tipe', $editing->tipe_skala ?? 'angka');
 @endphp
 <div class="head">
-    <div><h1>Penilaian Siswa</h1><small>Nilai angka 0–100 atau huruf A–E. Kegiatan dapat dihapus dalam batas 7 hari.</small></div>
+    <div><h1>Penilaian Siswa</h1><small>Nilai angka 0–100 atau huruf A–E. Kegiatan dapat diedit/dihapus sampai 7 hari setelah diinput.</small></div>
     <div class="seg">
         <a @class(['on' => $tab === 'input']) href="{{ $url(['tab' => null]) }}">Input Nilai</a>
         <a @class(['on' => $tab === 'aktivitas']) href="{{ $url(['tab' => 'aktivitas']) }}">Kegiatan ({{ $acts->count() }})</a>
@@ -28,7 +28,7 @@
         @if($editing)<div class="alert alert-info">Mengedit kegiatan: {{ $editing->nama_kegiatan }} — menyimpan akan menimpa nilai lama.</div>@endif
         <div class="fields">
             <div><label for="nama">Nama Kegiatan</label><input id="nama" type="text" name="nama" value="{{ old('nama', $editing->nama_kegiatan ?? '') }}" placeholder="mis. Ulangan Harian 1" maxlength="120" required></div>
-            <div><label for="tanggal">Tanggal</label><input id="tanggal" type="date" name="tanggal" value="{{ old('tanggal', $editing->tanggal_kegiatan ?? $today) }}" required></div>
+            <div><label for="tanggal">Tanggal</label><input id="tanggal" type="date" name="tanggal" value="{{ old('tanggal', $editing->tanggal_kegiatan ?? $today) }}" max="{{ $today }}" required></div>
             <div><label for="tipe_skala">Skala</label><select id="tipe_skala" name="tipe"><option value="angka" @selected($tipe === 'angka')>Angka (0–100)</option><option value="huruf" @selected($tipe === 'huruf')>Huruf (A–E)</option></select></div>
         </div>
         <div class="row" style="margin-top:10px"><small>Isi cepat:</small>
@@ -53,12 +53,11 @@
     @foreach($acts as $a)
         @php($v = $vals[$a->id] ?? [])
         @php($nums = array_filter($v, 'is_numeric'))
-        @php($canDel = ! $a->tanggal_kegiatan || \App\Services\Rules::withinEditWindow($a->tanggal_kegiatan) || auth()->user()->isAdmin())
+        @php($canDel = \App\Services\Rules::gradeEditable(auth()->user(), $a))
         <tr><td class="mono">{{ $a->tanggal_kegiatan }}</td><td><b>{{ $a->nama_kegiatan }}</b></td><td>{{ $a->tipe_skala }}</td>
             <td class="c mono">{{ count($v) }}</td><td class="c mono"><b>{{ $a->tipe_skala === 'angka' && $nums ? number_format(array_sum($nums) / count($nums), 1) : '-' }}</b></td>
             <td class="r"><div class="row row-end">
-                <a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Edit</a>
-                @if($canDel)<form method="post" action="{{ route('grades.destroy', $a->id) }}" class="inline" data-confirm="Hapus kegiatan &quot;{{ $a->nama_kegiatan }}&quot; beserta seluruh nilainya?">@csrf<button class="btn btn-sm btn-danger">Hapus</button></form>
+                @if($canDel)<a class="btn btn-sm" href="{{ $url(['tab' => null, 'act' => $a->id]) }}">Edit</a><form method="post" action="{{ route('grades.destroy', $a->id) }}" class="inline" data-confirm="Hapus kegiatan &quot;{{ $a->nama_kegiatan }}&quot; beserta seluruh nilainya?">@csrf<button class="btn btn-sm btn-danger">Hapus</button></form>
                 @else<span class="badge">🔒 &gt; 7 hari</span>@endif
             </div></td></tr>
     @endforeach
