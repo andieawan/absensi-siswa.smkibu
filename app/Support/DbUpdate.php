@@ -28,4 +28,16 @@ class DbUpdate
             }
         }
     }
+
+    /** Modul BK siap dipakai (tabel sudah dibuat).  */
+    public static function bkReady(): bool
+    {
+        return \Illuminate\Support\Facades\Schema::hasTable('bk_records');
+    }
+
+    /** Kolom kontak orang tua sudah ada di tabel siswa. */
+    public static function parentContactReady(): bool
+    {
+        return \Illuminate\Support\Facades\Schema::hasColumn('students', 'telp_ortu');
+    }
 }

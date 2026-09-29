@@ -105,7 +105,7 @@ class AdminService
             throw new UserError('Kelas tidak valid.');
         }
         $data = ['nama' => trim($in['nama']), 'jk' => $in['jk'], 'class_id' => (int) $in['class_id'], 'status' => $in['status'] ?? 'aktif'];
-        if (array_key_exists('telp_ortu', $in) || array_key_exists('nama_ortu', $in)) {
+        if ((array_key_exists('telp_ortu', $in) || array_key_exists('nama_ortu', $in)) && \App\Support\DbUpdate::parentContactReady()) {
             $data['nama_ortu'] = trim((string) ($in['nama_ortu'] ?? '')) ?: null;
             $data['telp_ortu'] = \App\Support\WhatsApp::normalize((string) ($in['telp_ortu'] ?? ''));
             if ($data['telp_ortu'] === null && trim((string) ($in['telp_ortu'] ?? '')) !== '') {

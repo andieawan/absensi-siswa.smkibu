@@ -40,7 +40,7 @@ database/migrations/        skema (tabel yang sudah ada dilewati → DB versi la
 database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
 resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
 routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
-tests/                      64 tes PHPUnit (fitur & aturan bisnis)
+tests/                      65 tes PHPUnit (fitur & aturan bisnis)
 ```
 
 ## Kebutuhan
@@ -113,7 +113,7 @@ catatan BK menyimpan kelas saat kejadian. Setelah itu atur ulang Wali Kelas di A
 | `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
 | `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
 | `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh |
-| `vendor/bin/phpunit` | Jalankan 64 tes otomatis (SQLite in-memory) |
+| `vendor/bin/phpunit` | Jalankan 65 tes otomatis (SQLite in-memory) |
 
 ## Pengganti fitur Google
 Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**

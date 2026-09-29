@@ -15,6 +15,13 @@ use Illuminate\Support\Facades\Storage;
 /** Modul BK terpadu: Ringkasan + Pelanggaran, Buku Kasus, Prestasi, Home Visit, Riwayat Surat. */
 class BkRecordController extends Controller
 {
+    public function __construct()
+    {
+        if (! \App\Support\DbUpdate::bkReady()) {
+            throw new \App\Exceptions\UserError('Modul BK belum aktif: Admin perlu membuka Pengaturan lalu klik "Perbarui Database Sekarang".');
+        }
+    }
+
     private function module(string $jenis): array
     {
         return BkModules::get($jenis) ?? abort(404);
