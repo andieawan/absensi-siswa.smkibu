@@ -45,6 +45,9 @@ class StudentController extends Controller
                 'canOverride' => $u->hasRole('admin', 'superadmin', 'kepsek'),
                 'tokens' => ParentToken::where('student_id', $student->id)->orderByDesc('created_at')->get(),
                 'newToken' => session('new_token'),
+                'bkRecords' => \App\Services\BkService::canOpen($u)
+                    ? \App\Services\BkService::visible($u)->where('student_id', $student->id)->orderByDesc('tanggal')->orderByDesc('id')->limit(30)->get()
+                    : null,
             ];
         }
 

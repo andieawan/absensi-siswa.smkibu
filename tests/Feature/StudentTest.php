@@ -50,10 +50,10 @@ class StudentTest extends TestCase
     public function test_bk_manual_boleh_mundur_lebih_7_hari(): void
     {
         $old = $this->daysAgo(20);
-        $this->actingAs($this->bk)->post('/bk', ['student' => 1, 'status' => 'I', 'date' => $old, 'notes' => 'konseling'])->assertSessionHas('success');
+        $this->actingAs($this->bk)->post('/bk/presensi', ['student' => 1, 'status' => 'I', 'date' => $old, 'notes' => 'konseling'])->assertSessionHas('success');
         $this->assertDatabaseHas('attendance', ['student_id' => 1, 'tanggal' => $old, 'recorded_via' => 'bk_manual']);
-        $this->actingAs($this->wali)->post('/bk', ['student' => 1, 'status' => 'I', 'date' => $old])->assertForbidden();
-        $this->actingAs($this->bk)->get('/bk?class=1')->assertOk()->assertSee('Rekap Ketidakhadiran');
+        $this->actingAs($this->wali)->post('/bk/presensi', ['student' => 1, 'status' => 'I', 'date' => $old])->assertForbidden();
+        $this->actingAs($this->bk)->get('/bk/presensi?class=1')->assertOk()->assertSee('Rekap Ketidakhadiran');
         $this->assertStringStartsWith('PK', $this->get('/unduh/bk?class=1')->getContent());
     }
 }

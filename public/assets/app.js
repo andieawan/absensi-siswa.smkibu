@@ -162,6 +162,37 @@
     });
   });
 
+  // ---- Pilih Kelas → Nama siswa: <select data-pick-class="#siswa"> menyaring <optgroup data-class> ----
+  $$('select[data-pick-class]').forEach(function (cls) {
+    var stu = $(cls.getAttribute('data-pick-class'));
+    if (!stu) return;
+    var groups = $$('optgroup[data-class]', stu);
+    var apply = function () {
+      var v = cls.value;
+      groups.forEach(function (g) {
+        var show = !v || g.getAttribute('data-class') === v;
+        g.hidden = !show; g.disabled = !show;
+      });
+      var sel = stu.options[stu.selectedIndex];
+      if (sel && sel.parentNode.disabled) stu.value = '';
+      if (v && groups.length) { var only = groups.filter(function (g) { return !g.disabled; }); if (only.length === 1 && only[0].children.length === 1 && !stu.value) stu.value = only[0].children[0].value; }
+    };
+    cls.addEventListener('change', apply);
+    apply();
+  });
+
+  // ---- Ambil foto langsung dari kamera HP: <button data-camera="#input-file"> ----
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-camera]');
+    if (!b) return;
+    var inp = $(b.getAttribute('data-camera'));
+    if (!inp) return;
+    var acc = inp.getAttribute('accept');
+    inp.setAttribute('capture', 'environment'); inp.setAttribute('accept', 'image/*');
+    inp.click();
+    setTimeout(function () { inp.removeAttribute('capture'); inp.setAttribute('accept', acc); }, 1000);
+  });
+
   // ---- Cegah kirim ganda + tampilkan status "Menyimpan…" ----
   document.addEventListener('submit', function (e) {
     var f = e.target;

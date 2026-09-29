@@ -25,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('admin', fn (User $u) => $u->isAdmin());
         Gate::define('bk', fn (User $u) => $u->hasRole('bk', 'admin', 'superadmin'));
+        Gate::define('bk-modul', fn (User $u) => \App\Services\BkService::canOpen($u));
         Gate::define('lihat-sekolah', fn (User $u) => $u->hasRole('kepsek', 'superadmin', 'admin', 'bk'));
 
         RateLimiter::for('publik', fn (Request $r) => Limit::perMinute(60)->by($r->ip()));

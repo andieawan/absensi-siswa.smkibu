@@ -15,7 +15,8 @@ class StudentController extends Controller
 {
     private function rules(): array
     {
-        return ['nama' => 'required|string|max:191', 'jk' => 'required|in:L,P', 'class_id' => 'required|integer', 'status' => ['required', Rule::in(array_keys(Student::STATUSES))]];
+        return ['nama' => 'required|string|max:191', 'jk' => 'required|in:L,P', 'class_id' => 'required|integer', 'status' => ['required', Rule::in(array_keys(Student::STATUSES))],
+            'nama_ortu' => 'nullable|string|max:191', 'telp_ortu' => 'nullable|string|max:32'];
     }
 
     public function index(Request $request)

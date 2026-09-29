@@ -4,6 +4,9 @@ use App\Http\Controllers\Admin;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BkController;
+use App\Http\Controllers\BkRecordController;
+use App\Http\Controllers\MonitorController;
+use App\Http\Controllers\RecapController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\GradeController;
@@ -58,9 +61,24 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::post('/siswa/akses-wali/{token}/cabut', [StudentController::class, 'parentRevoke'])->name('students.parent.revoke');
 
     Route::middleware('can:bk')->group(function () {
-        Route::get('/bk', [BkController::class, 'index'])->name('bk');
-        Route::post('/bk', [BkController::class, 'store'])->name('bk.store');
+        Route::get('/bk/presensi', [BkController::class, 'index'])->name('bk');
+        Route::post('/bk/presensi', [BkController::class, 'store'])->name('bk.store');
+        Route::post('/bk/delegasi', [BkController::class, 'delegate'])->name('bk.delegate');
+        Route::post('/bk/delegasi/{token}/cabut', [BkController::class, 'revoke'])->name('bk.revoke');
     });
+    // Modul BK terpadu (Wali Kelas & Kepsek ikut melihat sesuai hak akses)
+    Route::middleware('can:bk-modul')->group(function () {
+        Route::get('/bk', [BkRecordController::class, 'home'])->name('bk.home');
+        Route::get('/bk/catatan/{jenis}', [BkRecordController::class, 'index'])->name('bk.records');
+        Route::post('/bk/catatan/{jenis}', [BkRecordController::class, 'store'])->name('bk.records.store');
+        Route::put('/bk/catatan/{jenis}/{record}', [BkRecordController::class, 'update'])->name('bk.records.update');
+        Route::delete('/bk/catatan/{jenis}/{record}', [BkRecordController::class, 'destroy'])->name('bk.records.destroy');
+        Route::get('/bk/catatan/{jenis}/{record}/berkas', [BkRecordController::class, 'file'])->name('bk.records.file');
+    });
+
+    Route::get('/pantau', MonitorController::class)->middleware('can:lihat-sekolah')->name('monitor');
+    Route::get('/rekap', [RecapController::class, 'index'])->name('recap');
+    Route::get('/rekap/unduh', [RecapController::class, 'export'])->name('recap.export');
 
     Route::get('/surat/peringatan/{student}', [LetterController::class, 'warning'])->name('letters.warning');
     Route::get('/surat/panggilan/{student}', [LetterController::class, 'summons'])->name('letters.summons');
@@ -98,6 +116,10 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::get('/hardcopy/template', [Admin\HardcopyController::class, 'template'])->name('hardcopy.template');
         Route::post('/hardcopy/pratinjau', [Admin\HardcopyController::class, 'preview'])->name('hardcopy.preview');
         Route::post('/hardcopy/simpan', [Admin\HardcopyController::class, 'commit'])->name('hardcopy.commit');
+
+        Route::get('/kenaikan', [Admin\PromotionController::class, 'index'])->name('promotion');
+        Route::post('/kenaikan', [Admin\PromotionController::class, 'promote'])->name('promotion.run');
+        Route::post('/tahun-ajaran', [Admin\PromotionController::class, 'newYear'])->name('promotion.year');
 
         Route::get('/log', [Admin\LogController::class, 'index'])->name('logs');
 

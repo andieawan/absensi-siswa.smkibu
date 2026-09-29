@@ -28,6 +28,7 @@
     <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c1.9.7 3.2 2.5 3.5 5.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.6 4.3 4.3 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
 </svg>
 @auth
@@ -41,7 +42,8 @@
             ['students', 'Siswa', 'Siswa', 'i-users', 'students*'],
         ];
         $extra = [];
-        if ($me->can('bk')) $extra[] = ['bk', 'BK', 'BK', 'i-heart', 'bk*'];
+        if ($me->can('lihat-sekolah')) $extra[] = ['monitor', 'Pantau', 'Pantau', 'i-eye', 'monitor'];
+        if ($me->can('bk-modul')) $extra[] = ['bk.home', 'BK', 'BK', 'i-heart', 'bk*'];
         if ($me->can('admin')) $extra[] = ['admin.teachers', 'Admin', 'Admin', 'i-gear', 'admin.*'];
         $initial = mb_strtoupper(mb_substr(trim(preg_replace('/^(Dra?\.|Drs\.|Ir\.|H\.|Hj\.)\s*/i', '', $me->nama)), 0, 1));
     @endphp

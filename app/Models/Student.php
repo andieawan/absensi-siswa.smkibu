@@ -9,7 +9,7 @@ class Student extends Model
 {
     use UsesSequenceId;
 
-    public const STATUSES = ['aktif' => 'Aktif', 'pindah' => 'Pindah', 'berhenti' => 'Berhenti', 'nonaktif' => 'Nonaktif', 'keluar' => 'Keluar'];
+    public const STATUSES = ['aktif' => 'Aktif', 'lulus' => 'Lulus', 'pindah' => 'Pindah', 'berhenti' => 'Berhenti', 'nonaktif' => 'Nonaktif', 'keluar' => 'Keluar'];
 
     public $timestamps = false;
     protected $guarded = [];

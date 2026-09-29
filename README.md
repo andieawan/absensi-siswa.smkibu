@@ -7,32 +7,40 @@ JavaScript hanya sedikit (tanpa npm/Vite, tanpa langkah build). Database MySQL/M
 | Menu | Isi |
 |---|---|
 | **Login** | Sesi Laravel, batas 10 gagal / 15 menit, **Ganti Akun** (verifikasi ulang password), ganti password (sesi di perangkat lain otomatis keluar) |
-| **Dashboard** | Wali Kelas · Per Mapel · Sekolah (Kepsek). KPI H/I/S/A, ringkasan & saran otomatis, tren, pola absen berkala (hari sama, jarak 10–18 hari), daftar "Perlu Perhatian" + sinyal nilai turun |
+| **Dashboard** | Wali Kelas · Per Mapel · Sekolah (Kepsek). KPI H/I/S/A, ringkasan & saran otomatis, tren, pola absen berkala (hari sama, jarak 10–18 hari), daftar "Perlu Perhatian" + sinyal nilai turun. Wali kelas melihat status "sudah/belum diisi hari ini"; Kepsek/BK/Admin melihat "x/y kelas sudah absen" |
+| **Pantau** | Kelas mana yang sudah/belum mengisi absen harian pada suatu tanggal (filter "Belum mengisi"), lengkap dengan wali kelas, jumlah H/I/S/A, jam terakhir diisi |
+| **Rekap Rapor** | Jumlah Sakit / Izin / Tanpa Keterangan per siswa per semester (absen harian), rentang tanggal bisa diubah, unduh Excel & cetak — siap disalin ke e-Rapor. Wali kelas: kelasnya; BK/Kepsek/Admin: semua kelas |
 | **Absensi** | Harian (wali) / per mapel, tombol H·I·S·A + catatan, simpan ulang = update, peringatan 85%, riwayat sesi (hapus ≤ 7 hari), **tautan delegasi Ketua Kelas** (maks. 24 jam), unduh Excel |
 | **Nilai** | Input/edit kegiatan (angka 0–100 / huruf A–E), daftar kegiatan (edit/hapus ≤ 7 hari sejak diinput; setelah itu **nilai susulan** tetap bisa diisi untuk siswa yang belum punya nilai). Nilai kosong = belum mengumpulkan (tidak dihitung rata-rata), rekap + rata-rata, Excel, laporan cetak |
-| **Riwayat Siswa** | Profil, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, nilai, **Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
-| **Integrasi BK** | Input absensi manual BK, rekap ketidakhadiran per kelas, Excel |
-| **Admin Panel** | Akun guru · Data siswa (+ impor xlsx/csv) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · Log Aktivitas · Pengaturan & Backup |
+| **Riwayat Siswa** | Profil, kontak orang tua + ringkasan via WhatsApp, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, nilai, catatan BK, **Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
+| **BK (terpadu)** | Ringkasan · **Presensi BK** (absen manual, tautan ketua kelas untuk kelas mana pun, rekap per kelas) · **Pelanggaran** (tanpa poin; Ringan/Sedang/Berat; sanksi manual) · **Buku Kasus** (bisa "Sangat Rahasia") · **Prestasi** · **Home Visit** · **Riwayat Surat** (status Proses/Selesai + unggah scan/foto kamera). Form memakai pilihan Kelas → Nama siswa |
+| **WhatsApp gratis** | Tombol `wa.me` — tanpa gateway/API berbayar: pesan disiapkan aplikasi, WhatsApp di HP/laptop guru terbuka, guru tinggal menekan kirim. Ada di halaman Absensi ("Kabari Orang Tua" untuk siswa I/S/A), Riwayat Siswa, catatan BK, dan tautan ketua kelas/portal wali |
+| **Admin Panel** | Akun guru · Data siswa (+ nama & No. HP orang tua, impor xlsx/csv) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · **Kenaikan Kelas** (naik/tinggal/lulus per siswa + tahun ajaran baru, backup otomatis) · Log Aktivitas · Pengaturan & Backup |
 | **Publik** | `/presensi/{token}` (Ketua Kelas, tanpa login) dan `/wali/{token}` (Wali Murid, baca-saja). Tautan lama `/?token=` & `/?wali=` tetap berfungsi |
 
 Aturan bisnis: batas ubah/hapus 7 hari (non-admin; absensi dihitung dari tanggal sesi, nilai dari waktu input), satu kelas satu wali kelas, syarat kehadiran 85%, otorisasi guru (wali kelas untuk absen harian;
 pasangan atau kelas+mapel yang diampu untuk absen mapel/nilai), token delegasi ≤ 24 jam, audit log 500 baris terakhir.
 
+Hak akses modul BK: **Guru BK & Superadmin** mencatat/mengubah semua; **Kepsek & Admin** melihat semua (baca saja);
+**Wali Kelas** melihat catatan kelasnya dan boleh mencatat **Prestasi** siswanya. Kasus "Sangat Rahasia" hanya
+ditampilkan detailnya untuk Guru BK — yang lain hanya melihat bahwa ada kasus. Scan surat disimpan di
+`storage/app/private/bk-surat` (tidak bisa dibuka langsung dari internet).
+
 ## Struktur kode
 ```
 app/
-├─ Http/Controllers/        Dashboard, Attendance, Grade, Student, Bk, Letter, Export, Public, Auth, Install
-│  └─ Admin/                Teacher, Student, Master (kelas & mapel), Pairing, Hardcopy, Log, Setting
+├─ Http/Controllers/        Dashboard, Attendance, Grade, Student, Bk, BkRecord, Monitor, Recap, Letter, Export, Public, Auth, Install
+│  └─ Admin/                Teacher, Student, Master (kelas & mapel), Pairing, Hardcopy, Promotion, Log, Setting
 ├─ Models/                  User, SchoolClass, Subject, Student, Attendance, GradeActivity, GradeValue, Pairing, …
 ├─ Services/                Rules (aturan bisnis), Analytics, AttendanceService, GradeService, AccessService,
-│                           AdminService, BackupService, Sequence, Audit, Assignments
-└─ Support/                 Dates, Passwords, Xlsx (baca/tulis .xlsx tanpa library luar)
+│                           AdminService, BackupService, Sequence, Audit, Assignments, BkService, SchoolReports
+└─ Support/                 Dates, Passwords, Xlsx (baca/tulis .xlsx tanpa library luar), WhatsApp, TahunAjaran, BkModules
 config/absensi.php          pengaturan khusus aplikasi
 database/migrations/        skema (tabel yang sudah ada dilewati → DB versi lama langsung terpakai)
 database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
 resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
 routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
-tests/                      36 tes PHPUnit (fitur & aturan bisnis)
+tests/                      63 tes PHPUnit (fitur & aturan bisnis)
 ```
 
 ## Kebutuhan
@@ -85,13 +93,22 @@ sudah ada akun). Nama tabel & kolom **tidak berubah**, tabel yang sudah ada dile
 `sha256:salt:hash`) tetap bisa dipakai login dan otomatis diganti ke bcrypt saat login berhasil. Tabel lama `sessions`
 dan `login_attempts` tidak dipakai lagi (sesi disimpan di `storage/`) dan boleh dihapus.
 
+## Impor siswa
+Kolom wajib: **NIS, Nama Siswa, JK, Kelas**. Kolom opsional: **Nama Ortu**, **No HP Ortu** (format bebas: `0812…`,
+`+62 812…`, `812…` — disimpan sebagai `62812…`). Nomor orang tua juga bisa diisi/diubah satu per satu di Admin → Data Siswa.
+
+## Akhir tahun ajaran
+Admin → **Kenaikan Kelas**: luluskan kelas XII dulu, lalu naikkan XI → XII dan X → XI (hilangkan centang siswa yang
+tinggal kelas), kemudian klik **Mulai Tahun Ajaran Baru**. Riwayat absensi, nilai, dan catatan BK tetap tersimpan;
+catatan BK menyimpan kelas saat kejadian. Setelah itu atur ulang Wali Kelas di Akun Guru bila berganti.
+
 ## Perintah berguna
 | Perintah | Fungsi |
 |---|---|
 | `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
 | `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
 | `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh |
-| `vendor/bin/phpunit` | Jalankan 36 tes otomatis (SQLite in-memory) |
+| `vendor/bin/phpunit` | Jalankan 63 tes otomatis (SQLite in-memory) |
 
 ## Pengganti fitur Google
 Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**

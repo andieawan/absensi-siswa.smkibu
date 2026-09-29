@@ -75,8 +75,8 @@ class AuthTest extends TestCase
     public function test_hak_akses_per_peran(): void
     {
         $this->actingAs($this->wali)->get('/admin/guru')->assertForbidden();
-        $this->actingAs($this->wali)->get('/bk')->assertForbidden();
-        $this->actingAs($this->bk)->get('/bk')->assertOk();
+        $this->actingAs($this->wali)->get('/bk/presensi')->assertForbidden();
+        $this->actingAs($this->bk)->get('/bk/presensi')->assertOk();
         $this->actingAs($this->admin)->get('/admin/guru')->assertOk();
         $this->actingAs($this->kepsek)->get('/?v=sekolah')->assertOk()->assertSee('Dashboard Sekolah');
         $this->actingAs($this->wali)->get('/')->assertOk()->assertSee('Dashboard Wali Kelas');

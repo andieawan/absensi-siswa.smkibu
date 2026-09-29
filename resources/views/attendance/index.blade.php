@@ -25,6 +25,7 @@
             <a @class(['on' => $tab === 'input']) href="{{ $url() }}" @if($tab === 'input') aria-current="page" @endif>Isi Absensi</a>
             <a @class(['on' => $tab === 'riwayat']) href="{{ $url(['tab' => 'riwayat']) }}" @if($tab === 'riwayat') aria-current="page" @endif>{{ $mode === 'wali' ? 'Riwayat & Ketua Kelas' : 'Riwayat' }}</a>
         </div>
+        @if($mode === 'wali' && $classId)<a class="btn btn-sm" href="{{ route('recap', ['class' => $classId]) }}">Rekap Rapor</a>@endif
     </div>
 </div>
 
@@ -78,6 +79,20 @@
             </div>
         </form>
         <p class="hint">Guru dapat mengisi/mengubah absensi sampai 7 hari ke belakang. Siswa yang tidak diubah otomatis tercatat <b>Hadir</b>.</p>
+        @php($absent = $mode === 'wali' ? $students->filter(fn ($s) => isset($existing[$s->id]) && $existing[$s->id]->status !== 'H') : collect())
+        @if($absent->isNotEmpty())
+        <div class="card card-tight">
+            <div style="padding:14px 16px;border-bottom:1px solid var(--line2)"><h2>Kabari Orang Tua via WhatsApp</h2><small>Gratis — tombol membuka WhatsApp di HP/laptop Anda dengan pesan siap kirim. Periksa lalu tekan kirim.</small></div>
+            @foreach($absent as $s)
+                @php($att = $existing[$s->id])
+                @php($wa = \App\Support\WhatsApp::link($s->telp_ortu, \App\Support\WhatsApp::attendanceMessage($s, $tanggal, $att->status, $att->notes, auth()->user()->nama)))
+                <div class="stu"><span class="lg {{ $att->status }}" aria-label="{{ ['I' => 'Izin', 'S' => 'Sakit', 'A' => 'Alpa'][$att->status] ?? $att->status }}">{{ $att->status }}</span>
+                    <span class="nm"><b>{{ $s->nama }}</b><small>{{ $s->nama_ortu ? 'Ortu: '.$s->nama_ortu.' · ' : '' }}{{ \App\Support\WhatsApp::display($s->telp_ortu) }}</small></span>
+                    @if($wa)<a class="btn btn-sm btn-wa" target="_blank" rel="noopener" href="{{ $wa }}">Kirim WA</a>@else<span class="btn btn-sm" aria-disabled="true" title="Isi nomor HP orang tua di Admin → Data Siswa">No. HP belum ada</span>@endif
+                </div>
+            @endforeach
+        </div>
+        @endif
     @endif
 @else
     @if($mode === 'wali')

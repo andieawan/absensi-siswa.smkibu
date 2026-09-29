@@ -23,7 +23,9 @@ class AccessService
         if (! SchoolClass::whereKey($classId)->exists()) {
             throw new UserError('Kelas tidak valid.');
         }
-        Rules::requireTeacher($user, null, $classId);
+        if (! $user->hasRole('bk')) {
+            Rules::requireTeacher($user, null, $classId); // wali kelas (atau admin); Guru BK boleh untuk kelas mana pun
+        }
         $hours = min(max(1, $hours), 24);
         $now = Dates::nowMillis();
         $exp = $now + $hours * 3600000;
@@ -38,7 +40,9 @@ class AccessService
 
     public static function revokeDelegation(User $user, DelegationToken $t): void
     {
-        Rules::requireTeacher($user, null, $t->class_id);
+        if (! $user->hasRole('bk')) {
+            Rules::requireTeacher($user, null, $t->class_id);
+        }
         if ($t->status === 'aktif') {
             $t->update(['status' => 'dicabut']);
             Audit::log('Cabut Delegasi', 'Absensi', $user->nama, "Kelas #{$t->class_id}");

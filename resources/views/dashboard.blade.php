@@ -44,12 +44,26 @@
 @endif
 
 @php($me = auth()->user())
+@can('lihat-sekolah')
+    @php($ds = \App\Services\SchoolReports::dailyStatus(\App\Support\Dates::today()))
+    @php($dsTotal = count(array_filter($ds, fn ($r) => $r['students'] > 0)))
+    @php($dsDone = count(array_filter($ds, fn ($r) => $r['filled'] > 0)))
+    @if($dsTotal)
+    <a class="today-strip" href="{{ route('monitor') }}">
+        <span><b>{{ $dsDone }}/{{ $dsTotal }} kelas</b> sudah mengisi absen harian hari ini</span>
+        <span class="meter" style="flex:1;min-width:80px;margin:0"><i class="{{ $dsDone >= $dsTotal ? 'f-ok' : 'f-warn' }}" style="width:{{ round($dsDone / $dsTotal * 100) }}%"></i></span>
+        <span class="btn btn-sm">{{ $dsDone < $dsTotal ? 'Lihat yang belum ›' : 'Lihat ›' }}</span>
+    </a>
+    @endif
+@endcan
 @if($me->hasRole('guru', 'admin', 'superadmin') || $me->kelas_wali_id)
+@php($waliDone = \App\Services\SchoolReports::waliFilledToday($me))
 <nav class="quick" aria-label="Aksi cepat">
-    @if($me->kelas_wali_id)<a class="quick-item primary" href="{{ route('attendance', ['mode' => 'wali']) }}"><svg class="ic"><use href="#i-check"/></svg><span><b>Isi Absensi Harian</b><small>Kelas wali · hari ini</small></span></a>@endif
+    @if($me->kelas_wali_id)<a @class(['quick-item', 'primary' => ! $waliDone]) href="{{ route('attendance', ['mode' => 'wali']) }}"><svg class="ic"><use href="#i-check"/></svg><span><b>{{ $waliDone ? 'Absensi Harian ✓' : 'Isi Absensi Harian' }}</b><small>{{ $waliDone ? 'Sudah diisi hari ini · ubah bila perlu' : 'Belum diisi hari ini' }}</small></span></a>@endif
     <a @class(['quick-item', 'primary' => ! $me->kelas_wali_id]) href="{{ route('attendance', ['mode' => 'mapel']) }}"><svg class="ic"><use href="#i-check"/></svg><span><b>Absensi Mapel</b><small>Per jam pelajaran</small></span></a>
     <a class="quick-item" href="{{ route('grades') }}"><svg class="ic"><use href="#i-star"/></svg><span><b>Input Nilai</b><small>Tugas, ulangan, susulan</small></span></a>
     <a class="quick-item" href="{{ route('students') }}"><svg class="ic"><use href="#i-users"/></svg><span><b>Cari Siswa</b><small>Riwayat & surat</small></span></a>
+    @if($me->kelas_wali_id)<a class="quick-item" href="{{ route('recap') }}"><svg class="ic"><use href="#i-check"/></svg><span><b>Rekap untuk Rapor</b><small>Sakit · Izin · Tanpa Ket. per semester</small></span></a>@endif
 </nav>
 @endif
 

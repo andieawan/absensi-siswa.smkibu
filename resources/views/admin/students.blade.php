@@ -11,13 +11,15 @@
                 <div><label>JK</label>@include('partials.select', ['name' => 'jk', 'options' => ['L' => 'Laki-laki', 'P' => 'Perempuan'], 'selected' => old('jk')])</div>
                 <div><label>Kelas</label>@include('partials.select', ['name' => 'class_id', 'options' => $classOpts, 'selected' => old('class_id', $fc)])</div>
                 <div><label>Status</label>@include('partials.select', ['name' => 'status', 'options' => \App\Models\Student::STATUSES, 'selected' => old('status', 'aktif')])</div>
+                <div><label>Nama Orang Tua/Wali <small>(opsional)</small></label><input type="text" name="nama_ortu" value="{{ old('nama_ortu') }}" maxlength="191"></div>
+                <div><label>No. HP/WA Orang Tua <small>(opsional)</small></label><input type="tel" name="telp_ortu" value="{{ old('telp_ortu') }}" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="32"></div>
             </div>
             <button class="btn btn-pri" style="margin-top:12px">Tambah</button>
         </form>
     </details>
     <details class="card"><summary style="cursor:pointer;font-weight:700">⇪ Impor Siswa (xlsx / csv)</summary>
         <form method="post" enctype="multipart/form-data" action="{{ route('admin.students.import') }}" style="margin-top:12px">@csrf
-            <p class="mut" style="font-size:12px">Kolom: <b>NIS, Nama Siswa, JK, Kelas</b> (nama kelas persis seperti di data kelas). NIS yang sudah ada dilewati.</p>
+            <p class="mut" style="font-size:12px">Kolom: <b>NIS, Nama Siswa, JK, Kelas</b> (nama kelas persis seperti di data kelas). Kolom opsional: <b>Nama Ortu</b>, <b>No HP Ortu</b>. NIS yang sudah ada dilewati.</p>
             <input type="file" name="file" accept=".xlsx,.csv" required><button class="btn btn-pri" style="margin-top:10px">Impor</button>
         </form>
     </details>
@@ -30,10 +32,10 @@
     </div>
 </form>
 <div class="card card-tight"><div class="scroll"><table class="tbl tbl-cards">
-    <thead><tr><th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>Status</th><th class="r">Edit</th></tr></thead>
+    <thead><tr><th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>HP Ortu</th><th>Status</th><th class="r">Edit</th></tr></thead>
     <tbody>
     @forelse($list as $s)
-        <tr><td class="mono" data-label="NIS">{{ $s->nis }}</td><td class="card-title" style="order:-1"><b>{{ $s->nama }}</b></td><td data-label="JK">{{ $s->jk }}</td><td data-label="Kelas">{{ $s->schoolClass->name ?? '-' }}</td>
+        <tr><td class="mono" data-label="NIS">{{ $s->nis }}</td><td class="card-title" style="order:-1"><b>{{ $s->nama }}</b></td><td data-label="JK">{{ $s->jk }}</td><td data-label="Kelas">{{ $s->schoolClass->name ?? '-' }}</td><td class="mono" data-label="HP ortu">{{ \App\Support\WhatsApp::display($s->telp_ortu) }}</td>
             <td data-label="Status"><span @class(['badge', 'b-ok' => $s->status === 'aktif', 'b-warn' => $s->status !== 'aktif'])>{{ $s->status }}</span></td>
             <td class="r"><details><summary class="link-summary">Ubah data</summary>
                 <form method="post" action="{{ route('admin.students.update', $s) }}" style="text-align:left;min-width:240px;margin:8px 0">@csrf @method('PUT')
@@ -41,10 +43,12 @@
                     <div class="field"><label>JK</label>@include('partials.select', ['name' => 'jk', 'options' => ['L' => 'Laki-laki', 'P' => 'Perempuan'], 'selected' => $s->jk])</div>
                     <div class="field"><label>Kelas</label>@include('partials.select', ['name' => 'class_id', 'options' => $classOpts, 'selected' => $s->class_id])</div>
                     <div class="field"><label>Status</label>@include('partials.select', ['name' => 'status', 'options' => \App\Models\Student::STATUSES, 'selected' => $s->status])</div>
+                    <div class="field"><label>Nama Orang Tua/Wali</label><input type="text" name="nama_ortu" value="{{ $s->nama_ortu }}" maxlength="191"></div>
+                    <div class="field"><label>No. HP/WA Orang Tua</label><input type="tel" name="telp_ortu" value="{{ $s->telp_ortu ? \App\Support\WhatsApp::display($s->telp_ortu) : '' }}" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="32"></div>
                     <small>NIS tidak dapat diubah.</small><br><button class="btn btn-sm btn-pri" style="margin-top:6px">Simpan</button>
                 </form></details></td></tr>
     @empty
-        <tr><td colspan="6" class="empty">Belum ada siswa.</td></tr>
+        <tr><td colspan="7" class="empty">Belum ada siswa.</td></tr>
     @endforelse
     </tbody>
 </table></div>@include('partials.pager', ['p' => $list])</div>

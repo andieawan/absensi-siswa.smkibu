@@ -105,6 +105,13 @@ class AdminService
             throw new UserError('Kelas tidak valid.');
         }
         $data = ['nama' => trim($in['nama']), 'jk' => $in['jk'], 'class_id' => (int) $in['class_id'], 'status' => $in['status'] ?? 'aktif'];
+        if (array_key_exists('telp_ortu', $in) || array_key_exists('nama_ortu', $in)) {
+            $data['nama_ortu'] = trim((string) ($in['nama_ortu'] ?? '')) ?: null;
+            $data['telp_ortu'] = \App\Support\WhatsApp::normalize((string) ($in['telp_ortu'] ?? ''));
+            if ($data['telp_ortu'] === null && trim((string) ($in['telp_ortu'] ?? '')) !== '') {
+                throw new UserError('Nomor HP orang tua tidak valid. Contoh: 081234567890.');
+            }
+        }
         if ($s) {
             $s->update($data); // NIS tidak dapat diubah
             Audit::log('Ubah Data Siswa', 'Siswa', $actor->nama, "{$s->nama} (NIS {$s->nis})");
@@ -126,20 +133,22 @@ class AdminService
         return $s;
     }
 
-    /** Impor siswa dari baris xlsx/csv. Kolom: NIS, Nama Siswa, JK, Kelas (nama kelas). @return array{0:int,1:string[]} */
+    /** Impor siswa dari baris xlsx/csv. Kolom: NIS, Nama Siswa, JK, Kelas (nama kelas); opsional Nama Ortu, No HP Ortu. @return array{0:int,1:string[]} */
     public static function importStudents(User $actor, array $hdr, array $rows): array
     {
         $iNis = \App\Support\Xlsx::col($hdr, ['nis']);
         $iNama = \App\Support\Xlsx::col($hdr, ['nama siswa', 'nama']);
         $iJk = \App\Support\Xlsx::col($hdr, ['jk', 'jenis kelamin', 'l/p']);
         $iKelas = \App\Support\Xlsx::col($hdr, ['kelas']);
+        $iOrtu = \App\Support\Xlsx::col($hdr, ['nama ortu', 'nama orang tua', 'nama wali', 'orang tua']);
+        $iTelp = \App\Support\Xlsx::col($hdr, ['no hp ortu', 'hp ortu', 'no hp', 'no. hp', 'telp ortu', 'telepon', 'no wa', 'whatsapp']);
         if ($iNis === null || $iNama === null || $iKelas === null) {
             throw new UserError('Kolom wajib: NIS, Nama Siswa, JK, Kelas (nama kelas sama persis dengan data kelas).');
         }
         $classes = SchoolClass::pluck('id', 'name')->mapWithKeys(fn ($id, $n) => [mb_strtolower($n) => $id]);
         $ok = 0;
         $skip = [];
-        DB::transaction(function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $classes, &$ok, &$skip) {
+        DB::transaction(function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $iOrtu, $iTelp, $classes, &$ok, &$skip) {
             foreach ($rows as $n => $r) {
                 $nis = trim((string) ($r[$iNis] ?? ''));
                 $nama = trim((string) ($r[$iNama] ?? ''));
@@ -152,7 +161,8 @@ class AdminService
                     if ($nama === '' || ! in_array($jk, ['L', 'P'], true)) {
                         throw new UserError('nama/JK tidak valid');
                     }
-                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => $nama, 'jk' => $jk, 'class_id' => $cid, 'status' => 'aktif'], false);
+                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => $nama, 'jk' => $jk, 'class_id' => $cid, 'status' => 'aktif',
+                        'nama_ortu' => $iOrtu !== null ? trim((string) ($r[$iOrtu] ?? '')) : '', 'telp_ortu' => $iTelp !== null ? trim((string) ($r[$iTelp] ?? '')) : ''], false);
                     $ok++;
                 } catch (UserError $e) {
                     $skip[] = 'Baris '.($n + 2)." ($nis): ".$e->getMessage();

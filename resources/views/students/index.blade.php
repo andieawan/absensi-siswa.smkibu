@@ -42,6 +42,15 @@
                 <div class="kpi"><small>Alpa</small><div class="n mono bad">{{ $stats['alpa'] }}</div></div>
             </div>
             @if($attention['category'])<p style="margin-top:12px"><span class="badge b-warn">Perlu perhatian: {{ \App\Services\Analytics::CATEGORIES[$attention['category']] }}</span></p>@endif
+            @if($canLetter)
+                @php($portal = $newToken ?: $tokens->firstWhere('status', 'aktif')?->token)
+                @php($waSum = \App\Support\WhatsApp::link($student->telp_ortu, \App\Support\WhatsApp::summaryMessage($student, $stats, $portal ? route('parent', $portal) : null, auth()->user()->nama)))
+                <div class="contact-row">
+                    <span>👪 <b>Orang tua/wali:</b> {{ $student->nama_ortu ?: '-' }} · <span class="mono">{{ \App\Support\WhatsApp::display($student->telp_ortu) }}</span></span>
+                    @if($waSum)<a class="btn btn-sm btn-wa" target="_blank" rel="noopener" href="{{ $waSum }}">Kirim ringkasan via WhatsApp</a>
+                    @else<small class="mut">Nomor HP orang tua belum diisi @can('admin')— <a href="{{ route('admin.students', ['q' => $student->nis]) }}">isi di Data Siswa</a>@else (hubungi admin)@endcan.</small>@endif
+                </div>
+            @endif
         </div>
 
         @foreach($patterns as $a)
@@ -85,13 +94,31 @@
             </tbody></table></div>@endif
         </div>
 
+        @if($bkRecords !== null)
+        <div class="card card-tight"><div class="row" style="padding:14px 16px;justify-content:space-between"><h2>Catatan BK ({{ $bkRecords->count() }})</h2>
+            @if(\App\Services\BkService::isCounselor(auth()->user()))<a class="btn btn-sm" href="{{ route('bk.records', ['kasus', 'siswa' => $student->id]) }}">+ Catat</a>@endif</div>
+            @if($bkRecords->isEmpty())<div class="empty">Belum ada catatan BK untuk siswa ini.</div>@else
+            @foreach($bkRecords as $r)
+                @php($mod = \App\Support\BkModules::get($r->jenis))
+                <a class="stu" style="color:inherit" href="{{ route('bk.records', [$r->jenis, 'siswa' => $student->id]) }}">
+                    <span aria-hidden="true">{{ $mod['icon'] ?? '•' }}</span>
+                    <span class="nm"><b>{{ \App\Services\BkService::isMasked(auth()->user(), $r) ? '🔒 Kasus rahasia — ditangani BK' : $r->judul }}</b><small>{{ $mod['label'] ?? $r->jenis }}{{ $r->kategori && ! \App\Services\BkService::isMasked(auth()->user(), $r) ? ' · '.$r->kategori : '' }} · {{ \App\Support\Dates::human($r->tanggal) }}</small></span>
+                    @if($r->status)<span @class(['badge', 'b-warn' => $r->status === 'Proses', 'b-ok' => $r->status === 'Selesai'])>{{ $r->status }}</span>@endif
+                </a>
+            @endforeach
+            @endif
+        </div>
+        @endif
+
         @if($canParent)
         <div class="card"><h2>Akses Portal Wali Murid</h2>
             <p class="mut" style="font-size:12px">Tautan baca-saja untuk orang tua: hanya menampilkan kehadiran siswa ini (tanpa nilai atau data siswa lain). Dapat dicabut kapan saja.</p>
             @if($newToken)
                 <div class="alert alert-success">Kirim tautan ini ke orang tua/wali:</div>
                 <code class="link" id="wm">{{ route('parent', $newToken) }}</code>
-                <p><button type="button" class="btn btn-sm" data-copy="#wm">Salin Tautan</button></p>
+                <p class="row"><button type="button" class="btn btn-sm" data-copy="#wm">Salin Tautan</button>
+                    @php($waP = \App\Support\WhatsApp::link($student->telp_ortu, 'Assalamu\'alaikum Bapak/Ibu, berikut tautan untuk memantau kehadiran ananda '.$student->nama.': '.route('parent', $newToken)."\n\n".$settings->school_name))
+                    <a class="btn btn-sm btn-wa" target="_blank" rel="noopener" href="{{ $waP ?? \App\Support\WhatsApp::share('Tautan kehadiran ananda '.$student->nama.': '.route('parent', $newToken)) }}">Kirim via WhatsApp</a></p>
             @endif
             <form method="post" action="{{ route('students.parent.create', $student) }}" style="margin-bottom:10px">@csrf<button class="btn">Buat Tautan Baru</button></form>
             @foreach($tokens as $t)
