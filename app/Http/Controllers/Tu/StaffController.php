@@ -48,9 +48,9 @@ class StaffController extends TuController
     public function export(Request $request)
     {
         $bulan = $this->bulan($request);
-        $rows = [['No', 'Nama', 'Peran', 'Hadir', 'Izin', 'Sakit', 'Alpa', 'Dinas Luar', 'Hari Tercatat', '% Kehadiran']];
+        $rows = [['No', 'Nama', 'Peran', 'Hadir', 'Izin', 'Sakit', 'Alpa', 'Dinas Luar', 'Terlambat', 'Hari Tercatat', '% Kehadiran']];
         foreach (StaffService::recap($bulan) as $i => $r) {
-            $rows[] = [$i + 1, $r['user']->nama, $r['user']->roleLabel(), $r['H'], $r['I'], $r['S'], $r['A'], $r['D'], $r['total'], $r['rate'] === null ? '' : $r['rate'].'%'];
+            $rows[] = [$i + 1, $r['user']->nama, $r['user']->roleLabel(), $r['H'], $r['I'], $r['S'], $r['A'], $r['D'], $r['T'], $r['total'], $r['rate'] === null ? '' : $r['rate'].'%'];
         }
 
         return Xlsx::download("Rekap_Absensi_Guru_Staf_$bulan.xlsx", ['Guru & Staf' => $rows]);

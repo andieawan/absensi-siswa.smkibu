@@ -14,13 +14,15 @@ JavaScript hanya sedikit (tanpa npm/Vite, tanpa langkah build). Database MySQL/M
 | **Nilai** | Input/edit kegiatan (angka 0–100 / huruf A–E), daftar kegiatan (edit/hapus ≤ 7 hari sejak diinput; setelah itu **nilai susulan** tetap bisa diisi untuk siswa yang belum punya nilai). Nilai kosong = belum mengumpulkan (tidak dihitung rata-rata), rekap + rata-rata, Excel, laporan cetak |
 | **Riwayat Siswa** | Profil, kontak orang tua + ringkasan via WhatsApp, kehadiran, pola, uji pengesahan 85% (dispensasi Admin/Kepsek), log absen, nilai, catatan BK, **Portal Wali Murid** (buat/cabut), surat peringatan & panggilan |
 | **BK (terpadu)** | Ringkasan · **Presensi BK** (absen manual, tautan ketua kelas untuk kelas mana pun, rekap per kelas) · **Pelanggaran** (tanpa poin; Ringan/Sedang/Berat; sanksi manual) · **Buku Kasus** (bisa "Sangat Rahasia") · **Prestasi** · **Home Visit** · **Riwayat Surat** (status Proses/Selesai + unggah scan/foto kamera). Form memakai pilihan Kelas → Nama siswa |
-| **Tata Usaha (TU)** | **Data Siswa** (tambah/ubah/impor + kontak orang tua) · **Mutasi** siswa masuk (pindahan/baru) & keluar (pindah/berhenti/dikeluarkan; status siswa ikut berubah, surat keterangan pindah bernomor otomatis) · **Surat Keluar** dengan nomor otomatis (`001/KET/SMKIBU/X/2026`) termasuk Surat Keterangan Siswa Aktif, Keterangan Pindah, Dispensasi, dan Izin siap cetak · **Surat Masuk** (agenda, status Baru/Diproses/Selesai, disposisi, scan/foto) · **Absensi Guru & Staf** (H/I/S/A/Dinas Luar, rekap bulanan Excel & cetak) · **Cetak**: daftar hadir kosong per bulan, daftar siswa, kartu siswa |
+| **Tata Usaha (TU)** | **Data Siswa** (tambah/ubah/impor + kontak orang tua) · **Mutasi** siswa masuk (pindahan/baru) & keluar (pindah/berhenti/dikeluarkan; status siswa ikut berubah, surat keterangan pindah bernomor otomatis) · **Surat Keluar** dengan nomor otomatis (`001/KET/SMKIBU/X/2026`) termasuk Surat Keterangan Siswa Aktif, Keterangan Pindah, Dispensasi, dan Izin siap cetak · **Surat Masuk** (agenda, status Baru/Diproses/Selesai, disposisi, scan/foto) · **Absensi Guru & Staf** (H/I/S/A/Dinas Luar, jam masuk/pulang, terlambat, rekap bulanan Excel & cetak) · **Cetak**: daftar hadir kosong per bulan, daftar siswa, kartu siswa |
 | **WhatsApp gratis** | Tombol `wa.me` — tanpa gateway/API berbayar: pesan disiapkan aplikasi, WhatsApp di HP/laptop guru terbuka, guru tinggal menekan kirim. Ada di halaman Absensi ("Kabari Orang Tua" untuk siswa I/S/A), Riwayat Siswa, catatan BK, dan tautan ketua kelas/portal wali |
 | **Admin Panel** | Akun guru · Data siswa (+ nama & No. HP orang tua, impor xlsx/csv) · Kelas & Mapel · Pasangan Guru–Mapel–Kelas · Upload Hardcopy (template → pratinjau → simpan) · **Kenaikan Kelas** (naik/tinggal/lulus per siswa + tahun ajaran baru, backup otomatis) · Log Aktivitas · Pengaturan & Backup |
 | **Publik** | `/presensi/{token}` (Ketua Kelas, tanpa login) dan `/wali/{token}` (Wali Murid, baca-saja). Tautan lama `/?token=` & `/?wali=` tetap berfungsi |
 
 Aturan bisnis: batas ubah/hapus 7 hari (non-admin; absensi dihitung dari tanggal sesi, nilai dari waktu input), satu kelas satu wali kelas, syarat kehadiran 85%, otorisasi guru (wali kelas untuk absen harian;
 pasangan atau kelas+mapel yang diampu untuk absen mapel/nilai), token delegasi ≤ 24 jam, audit log 500 baris terakhir.
+
+**Absen mandiri guru & staf** (menu *Absen Saya* / kartu di beranda): guru, BK, kepsek, dan TU absen **masuk** dan **pulang** sendiri dari HP, atau melapor **Izin / Sakit / Dinas Luar** (alasan wajib). Hanya untuk hari ini dan sekali per hari; jam memakai waktu server (WIB), bukan jam HP. Masuk setelah *batas jam masuk* ditandai **terlambat** (muncul di rekap bulanan). Bila TU sudah mencatat status hari itu, yang bersangkutan tidak dapat mengubahnya sendiri (koreksi lewat TU). Pengaturan di Admin → Pengaturan: aktif/nonaktif, batas jam, dan **radius lokasi** (opsional): buka halaman itu saat berada di sekolah, klik *Pakai lokasi saya sekarang*, isi radius (mis. 150 m). Absen masuk/pulang lalu hanya diterima bila GPS HP berada dalam radius (gratis, tanpa layanan peta). Pengecekan lokasi memerlukan situs **https://**; kosongkan radius bila tidak diperlukan. Perlu klik *Perbarui Database Sekarang* setelah unggah versi ini.
 
 Hak akses modul TU: peran **TU** (dan Admin/Superadmin) dapat mengisi semua fitur TU; **Kepala Sekolah** hanya melihat
 (register surat, rekap absensi guru, cetak). TU **tidak** dapat membuka Admin Panel, modul BK, kenaikan kelas, atau mengubah
@@ -48,7 +50,7 @@ database/migrations/        skema (tabel yang sudah ada dilewati → DB versi la
 database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
 resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
 routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
-tests/                      76 tes PHPUnit (fitur & aturan bisnis)
+tests/                      87 tes PHPUnit (fitur & aturan bisnis)
 ```
 
 ## Kebutuhan
@@ -121,7 +123,7 @@ catatan BK menyimpan kelas saat kejadian. Setelah itu atur ulang Wali Kelas di A
 | `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
 | `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
 | `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh |
-| `vendor/bin/phpunit` | Jalankan 76 tes otomatis (SQLite in-memory) |
+| `vendor/bin/phpunit` | Jalankan 87 tes otomatis (SQLite in-memory) |
 
 ## Pengganti fitur Google
 Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**

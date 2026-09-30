@@ -9,6 +9,7 @@
     };
     $q = fn (array $o = []) => route('dashboard', array_filter(array_merge(['v' => $variant, 'class' => $variant === 'wali' ? null : $classId, 'subject' => $variant === 'mapel' ? $subjectId : null, 'cat' => $cat === 'all' ? null : $cat], $o), fn ($v) => $v !== null));
 @endphp
+@include('partials.selfcheck-card')
 <div class="head">
     <div>
         <h1>{{ $title }}</h1>

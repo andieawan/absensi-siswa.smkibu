@@ -2,6 +2,7 @@
 @section('content')
 @php($w = auth()->user()->can('tu'))
 @include('tu._tabs', ['h' => 'Tata Usaha', 'sub' => $w ? 'Administrasi siswa, surat, dan kehadiran guru & staf.' : 'Ringkasan administrasi (baca saja).'])
+@include('partials.selfcheck-card')
 
 <div class="kpis kpis-4">
     <div class="kpi"><small>Siswa aktif</small><div class="n">{{ $siswaAktif }}</div></div>

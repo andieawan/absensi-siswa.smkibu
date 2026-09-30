@@ -48,4 +48,16 @@ class DbUpdate
 
         return $s::hasTable('tu_surat') && $s::hasTable('mutasi_siswa') && $s::hasTable('staff_attendance');
     }
+
+    /** Absen mandiri guru & staf siap (kolom jam & pengaturan sudah ada). */
+    public static function selfReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null || app()->runningUnitTests()) {
+            $s = \Illuminate\Support\Facades\Schema::class;
+            $ok = $s::hasColumn('staff_attendance', 'jam_masuk') && $s::hasColumn('school_settings', 'staff_mandiri');
+        }
+
+        return $ok;
+    }
 }

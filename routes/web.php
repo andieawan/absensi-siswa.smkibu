@@ -13,6 +13,7 @@ use App\Http\Controllers\GradeController;
 use App\Http\Controllers\InstallController;
 use App\Http\Controllers\LetterController;
 use App\Http\Controllers\PublicController;
+use App\Http\Controllers\SelfCheckController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\Tu;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,11 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::put('/bk/catatan/{jenis}/{record}', [BkRecordController::class, 'update'])->name('bk.records.update');
         Route::delete('/bk/catatan/{jenis}/{record}', [BkRecordController::class, 'destroy'])->name('bk.records.destroy');
         Route::get('/bk/catatan/{jenis}/{record}/berkas', [BkRecordController::class, 'file'])->name('bk.records.file');
+    });
+
+    Route::middleware('can:absen-mandiri')->group(function () {
+        Route::get('/absen-saya', [SelfCheckController::class, 'index'])->name('selfcheck');
+        Route::post('/absen-saya', [SelfCheckController::class, 'store'])->name('selfcheck.store');
     });
 
     Route::get('/pantau', MonitorController::class)->middleware('can:lihat-sekolah')->name('monitor');

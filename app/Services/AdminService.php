@@ -193,7 +193,18 @@ class AdminService
 
     public static function saveSettings(User $actor, array $in): void
     {
-        SchoolSetting::put([
+        $staff = [];
+        if (! empty($in['staff_form']) && \App\Support\DbUpdate::selfReady()) {
+            $radius = (int) ($in['staff_radius'] ?? 0);
+            $lat = ($in['staff_lat'] ?? '') === '' ? null : (float) $in['staff_lat'];
+            $lng = ($in['staff_lng'] ?? '') === '' ? null : (float) $in['staff_lng'];
+            if ($radius > 0 && ($lat === null || $lng === null)) {
+                throw new UserError('Isi koordinat sekolah (atau klik "Pakai lokasi saya sekarang") sebelum mengaktifkan batas radius.');
+            }
+            $staff = ['staff_mandiri' => ! empty($in['staff_mandiri']), 'staff_jam_masuk' => ($in['staff_jam_masuk'] ?? '') ?: '07:15',
+                'staff_lat' => $lat, 'staff_lng' => $lng, 'staff_radius' => $radius ?: null];
+        }
+        SchoolSetting::put($staff + [
             'school_name' => trim($in['school_name']), 'tahun_ajaran' => trim((string) ($in['tahun_ajaran'] ?? '')),
             'semester' => $in['semester'], 'kepsek_nama' => trim((string) ($in['kepsek_nama'] ?? '')),
             'bk_nama' => trim((string) ($in['bk_nama'] ?? '')), 'backup_retention_weeks' => (int) $in['backup_retention_weeks'],

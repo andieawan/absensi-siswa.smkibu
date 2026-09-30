@@ -36,7 +36,7 @@
         @php($note = old("notes.{$u->id}", $cur->notes ?? ''))
         <div class="stu stu-att" data-row>
             <span class="no mono">{{ $i + 1 }}</span>
-            <div class="nm"><b>{{ $u->nama }}</b><small>{{ $u->roleLabel() }}</small></div>
+            <div class="nm"><b>{{ $u->nama }}</b><small>{{ $u->roleLabel() }}@include('tu._jam', ['cur' => $cur])</small></div>
             <div class="hisa" role="radiogroup" aria-label="Status kehadiran {{ $u->nama }}">
                 @foreach(\App\Services\StaffService::STATUS as $k => $lbl)
                     <label title="{{ $lbl }}"><input type="radio" name="status[{{ $u->id }}]" value="{{ $k }}" data-status="{{ $k }}" @checked($st === $k) aria-label="{{ $lbl }}"><span class="{{ $k }}" aria-hidden="true">{{ $k }}</span></label>
@@ -55,7 +55,7 @@
 <div class="card card-tight">
     @foreach($staff as $i => $u)
         @php($cur = $existing[$u->id] ?? null)
-        <div class="stu"><span class="no mono">{{ $i + 1 }}</span><div class="nm"><b>{{ $u->nama }}</b><small>{{ $u->roleLabel() }}@if($cur?->notes) · {{ $cur->notes }}@endif</small></div>
+        <div class="stu"><span class="no mono">{{ $i + 1 }}</span><div class="nm"><b>{{ $u->nama }}</b><small>{{ $u->roleLabel() }}@include('tu._jam', ['cur' => $cur])@if($cur?->notes) · {{ $cur->notes }}@endif</small></div>
             @if($cur)<span class="lg {{ $cur->status }}" title="{{ \App\Services\StaffService::STATUS[$cur->status] }}">{{ $cur->status }}</span>@else<span class="badge">Belum diisi</span>@endif</div>
     @endforeach
 </div>

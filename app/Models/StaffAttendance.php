@@ -8,7 +8,7 @@ class StaffAttendance extends Model
 {
     protected $table = 'staff_attendance';
     protected $guarded = [];
-    protected $casts = ['user_id' => 'integer'];
+    protected $casts = ['user_id' => 'integer', 'terlambat' => 'boolean', 'jarak' => 'integer'];
 
     public function user()
     {

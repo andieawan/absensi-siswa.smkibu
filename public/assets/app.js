@@ -181,6 +181,35 @@
     apply();
   });
 
+  // ---- Absen mandiri: form[data-geo="1"] meminta lokasi GPS sebelum dikirim ----
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.matches || !f.matches('form[data-geo="1"]') || f.getAttribute('data-geo-done')) return;
+    e.preventDefault();
+    var sub = e.submitter;
+    var go = function () { f.setAttribute('data-geo-done', '1'); if (sub && sub.name) f.querySelector('input[name=aksi]').value = sub.value; HTMLFormElement.prototype.submit.call(f); };
+    if (!navigator.geolocation) { alert('Browser ini tidak mendukung lokasi. Gunakan browser lain atau hubungi TU.'); return; }
+    var busy = sub; if (busy) { busy.disabled = true; busy.dataset.old = busy.textContent; busy.textContent = 'Mengambil lokasi…'; }
+    navigator.geolocation.getCurrentPosition(function (p) {
+      f.elements['lat'].value = p.coords.latitude; f.elements['lng'].value = p.coords.longitude; go();
+    }, function () {
+      if (busy) { busy.disabled = false; busy.textContent = busy.dataset.old; }
+      alert('Lokasi tidak dapat dibaca. Aktifkan GPS dan izinkan akses lokasi untuk situs ini (perlu alamat https://), lalu coba lagi.');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+  }, true);
+
+  // ---- Isi koordinat dari lokasi saat ini: <button data-geo-fill="#lat,#lng"> ----
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-geo-fill]');
+    if (!b) return;
+    var ids = b.getAttribute('data-geo-fill').split(',');
+    if (!navigator.geolocation) { alert('Browser tidak mendukung lokasi.'); return; }
+    b.disabled = true;
+    navigator.geolocation.getCurrentPosition(function (p) {
+      $(ids[0]).value = p.coords.latitude.toFixed(7); $(ids[1]).value = p.coords.longitude.toFixed(7); b.disabled = false;
+    }, function () { b.disabled = false; alert('Lokasi tidak dapat dibaca. Izinkan akses lokasi dan pastikan memakai https://.'); }, { enableHighAccuracy: true, timeout: 15000 });
+  });
+
   // ---- Ambil foto langsung dari kamera HP: <button data-camera="#input-file"> ----
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-camera]');
