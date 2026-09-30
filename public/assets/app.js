@@ -84,9 +84,9 @@
   function recount() {
     var box = document.getElementById('recount');
     if (!box) return;
-    var c = { H: 0, I: 0, S: 0, A: 0 };
+    var c = { H: 0, I: 0, S: 0, A: 0, D: 0 };
     $$('input[type=radio][data-status]:checked').forEach(function (r) { c[r.getAttribute('data-status')]++; });
-    ['H', 'I', 'S', 'A'].forEach(function (k) {
+    ['H', 'I', 'S', 'A', 'D'].forEach(function (k) {
       var el = box.querySelector('[data-c="' + k + '"]');
       if (el) el.textContent = c[k];
     });
@@ -191,6 +191,20 @@
     inp.setAttribute('capture', 'environment'); inp.setAttribute('accept', 'image/*');
     inp.click();
     setTimeout(function () { inp.removeAttribute('capture'); inp.setAttribute('accept', acc); }, 1000);
+  });
+
+  // ---- Tampilkan kolom sesuai jenis surat: <select data-jenis-switch> + elemen [data-jenis="a b"] ----
+  $$('select[data-jenis-switch]').forEach(function (sel) {
+    var form = sel.form;
+    var apply = function () {
+      $$('[data-jenis]', form).forEach(function (el) {
+        var on = el.getAttribute('data-jenis').split(' ').indexOf(sel.value) !== -1;
+        el.classList.toggle('hide', !on);
+        $$('input,select', el).forEach(function (i) { i.disabled = !on; });
+      });
+    };
+    sel.addEventListener('change', apply);
+    apply();
   });
 
   // ---- Cegah kirim ganda + tampilkan status "Menyimpan…" ----

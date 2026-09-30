@@ -14,5 +14,6 @@ return [
     'trust_proxies' => (bool) env('TRUST_PROXIES', false),
     'edit_window_days' => 7,     // batas ubah/hapus non-admin
     'min_attendance' => 85.0,    // syarat kehadiran minimal (%)
+    'kode_surat' => env('KODE_SURAT', 'SMKIBU'), // singkatan sekolah pada nomor surat: 001/KET/SMKIBU/X/2026
     'bk_subject_id' => 5,        // mapel "Bimbingan Konseling" disembunyikan dari daftar mapel reguler
 ];

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class AdminService
 {
-    public const ROLES = ['guru' => 'Guru', 'kepsek' => 'Kepala Sekolah', 'bk' => 'Guru BK', 'admin' => 'Admin', 'superadmin' => 'Superadmin'];
+    public const ROLES = ['guru' => 'Guru', 'kepsek' => 'Kepala Sekolah', 'bk' => 'Guru BK', 'tu' => 'Tata Usaha (TU)', 'admin' => 'Admin', 'superadmin' => 'Superadmin'];
 
     private static function cleanRoles(User $actor, array $roles, array $old = []): array
     {

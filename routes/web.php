@@ -14,6 +14,7 @@ use App\Http\Controllers\InstallController;
 use App\Http\Controllers\LetterController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\Tu;
 use Illuminate\Support\Facades\Route;
 
 // ---- PWA (manifest aplikasi yang bisa dipasang di HP) ----
@@ -87,6 +88,38 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
     Route::get('/unduh/absensi', [ExportController::class, 'attendance'])->name('export.attendance');
     Route::get('/unduh/nilai', [ExportController::class, 'grades'])->name('export.grades');
     Route::get('/unduh/bk', [ExportController::class, 'bk'])->middleware('can:bk')->name('export.bk');
+
+    // ---- Tata Usaha (TU): lihat = TU/Kepsek/Admin, ubah = TU/Admin ----
+    Route::prefix('tu')->name('tu.')->group(function () {
+        Route::middleware('can:tu-lihat')->group(function () {
+            Route::get('/', Tu\HomeController::class)->name('home');
+            Route::get('/mutasi', [Tu\MutasiController::class, 'index'])->name('mutasi');
+            Route::get('/surat/{arah}', [Tu\SuratController::class, 'index'])->whereIn('arah', ['masuk', 'keluar'])->name('surat');
+            Route::get('/surat/{surat}/berkas', [Tu\SuratController::class, 'file'])->name('surat.file');
+            Route::get('/surat/{surat}/cetak', [Tu\SuratController::class, 'print'])->name('surat.print');
+            Route::get('/absen-guru', [Tu\StaffController::class, 'index'])->name('staff');
+            Route::get('/absen-guru/rekap', [Tu\StaffController::class, 'recap'])->name('staff.recap');
+            Route::get('/absen-guru/rekap/unduh', [Tu\StaffController::class, 'export'])->name('staff.export');
+            Route::get('/cetak', [Tu\PrintController::class, 'index'])->name('print');
+            Route::get('/cetak/daftar-hadir', [Tu\PrintController::class, 'sheet'])->name('print.sheet');
+            Route::get('/cetak/daftar-siswa', [Tu\PrintController::class, 'list'])->name('print.list');
+            Route::get('/cetak/kartu', [Tu\PrintController::class, 'cards'])->name('print.cards');
+        });
+        Route::middleware('can:tu')->group(function () {
+            // Data siswa memakai pengendali yang sama dengan Admin Panel (tampilan menyesuaikan)
+            Route::get('/siswa', [Admin\StudentController::class, 'index'])->name('students');
+            Route::post('/siswa', [Admin\StudentController::class, 'store'])->name('students.store');
+            Route::put('/siswa/{student}', [Admin\StudentController::class, 'update'])->name('students.update');
+            Route::post('/siswa/impor', [Admin\StudentController::class, 'import'])->name('students.import');
+            Route::post('/mutasi/masuk', [Tu\MutasiController::class, 'masuk'])->name('mutasi.masuk');
+            Route::post('/mutasi/keluar', [Tu\MutasiController::class, 'keluar'])->name('mutasi.keluar');
+            Route::post('/surat-keterangan', [Tu\SuratController::class, 'keterangan'])->name('keterangan');
+            Route::post('/surat/{arah}', [Tu\SuratController::class, 'store'])->whereIn('arah', ['masuk', 'keluar'])->name('surat.store');
+            Route::put('/surat/{surat}', [Tu\SuratController::class, 'update'])->name('surat.update');
+            Route::delete('/surat/{surat}', [Tu\SuratController::class, 'destroy'])->name('surat.destroy');
+            Route::post('/absen-guru', [Tu\StaffController::class, 'store'])->name('staff.store');
+        });
+    });
 
     // ---- Admin Panel ----
     Route::prefix('admin')->name('admin.')->middleware('can:admin')->group(function () {

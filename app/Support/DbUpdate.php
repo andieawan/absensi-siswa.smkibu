@@ -40,4 +40,12 @@ class DbUpdate
     {
         return \Illuminate\Support\Facades\Schema::hasColumn('students', 'telp_ortu');
     }
+
+    /** Modul TU (mutasi, register surat, absensi guru) siap dipakai. */
+    public static function tuReady(): bool
+    {
+        $s = \Illuminate\Support\Facades\Schema::class;
+
+        return $s::hasTable('tu_surat') && $s::hasTable('mutasi_siswa') && $s::hasTable('staff_attendance');
+    }
 }

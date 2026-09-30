@@ -54,7 +54,7 @@ class User extends Authenticatable
 
     public function roleLabel(): string
     {
-        $map = ['superadmin' => 'Superadmin', 'admin' => 'Admin', 'kepsek' => 'Kepala Sekolah', 'bk' => 'Guru BK', 'guru' => 'Guru'];
+        $map = ['superadmin' => 'Superadmin', 'admin' => 'Admin', 'kepsek' => 'Kepala Sekolah', 'bk' => 'Guru BK', 'tu' => 'Tata Usaha', 'guru' => 'Guru'];
 
         return implode(' · ', array_map(fn ($r) => $map[$r] ?? $r, $this->roles ?? []));
     }

@@ -16,6 +16,10 @@ class DashboardController extends Controller
     public function __invoke(Request $request)
     {
         $u = $this->me();
+        // Akun TU murni (tanpa kelas/mapel/BK/kepsek/admin) langsung ke halaman kerjanya.
+        if ($u->hasRole('tu') && ! $u->kelas_wali_id && ! $u->hasRole('guru', 'bk', 'kepsek', 'admin', 'superadmin')) {
+            return redirect()->route('tu.home');
+        }
         $classes = SchoolClass::orderBy('name')->get();
         $subjects = Subject::regular()->orderBy('name')->get();
         $isWali = $u->kelas_wali_id !== null;
