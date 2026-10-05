@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Services\AccessService;
+use App\Services\Assignments;
 use App\Services\Rules;
 use Illuminate\Http\Request;
 
@@ -21,12 +22,20 @@ class StudentController extends Controller
         $u = $this->me();
         $q = trim((string) $request->query('q'));
         $fc = (int) $request->query('class');
-        $list = Student::with('schoolClass')->when($fc, fn ($x) => $x->where('class_id', $fc))
+        $allowed = Assignments::studentClassIds($u); // null = semua kelas
+        $classes = SchoolClass::orderBy('name')->when($allowed !== null, fn ($x) => $x->whereIn('id', $allowed))->get();
+        if ($allowed !== null && $fc && ! in_array($fc, $allowed, true)) {
+            $fc = 0;
+        }
+        $list = Student::with('schoolClass')->when($allowed !== null, fn ($x) => $x->whereIn('class_id', $allowed))->when($fc, fn ($x) => $x->where('class_id', $fc))
             ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w->where('nama', 'like', "%$q%")->orWhere('nis', 'like', "%$q%")))
             ->orderBy('nama')->paginate(60)->withQueryString();
 
-        $data = ['classes' => SchoolClass::orderBy('name')->get(), 'list' => $list, 'q' => $q, 'fc' => $fc];
+        $data = ['classes' => $classes, 'list' => $list, 'q' => $q, 'fc' => $fc];
         $student = $request->query('id') ? Student::with('schoolClass')->find((int) $request->query('id')) : null;
+        if ($student && $allowed !== null && ! in_array((int) $student->class_id, $allowed, true)) {
+            abort(403, 'Siswa ini bukan di kelas yang Anda ajar.');
+        }
         if ($student) {
             $myGrades = GradeValue::where('student_id', $student->id)->get();
             $acts = GradeActivity::whereIn('id', $myGrades->pluck('activity_id'))->get()->keyBy('id');

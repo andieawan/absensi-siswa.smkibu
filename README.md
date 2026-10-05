@@ -39,6 +39,9 @@ ditampilkan detailnya untuk Guru BK — yang lain hanya melihat bahwa ada kasus.
 kelas yang dipilih. Bila mapel berbeda tiap kelas (mis. B. Indonesia di X DKV 1, B. Daerah di X DKV 2), atur di
 Admin → **Pasangan Mapel**; mapel/kelas yang dicentang di akun guru berlaku silang (semua mapel di semua kelas itu).
 
+**Riwayat Siswa dibatasi.** Guru mapel hanya melihat kelas & siswa yang diajarnya (plus kelas perwaliannya); membuka siswa
+kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua kelas.
+
 ## Struktur kode
 ```
 app/

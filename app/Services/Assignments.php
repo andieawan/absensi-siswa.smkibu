@@ -64,4 +64,21 @@ class Assignments
 
         return $map;
     }
+
+    /**
+     * Kelas yang siswanya boleh dibuka di Riwayat Siswa. null = tanpa batas (admin, kepsek, BK, TU);
+     * selain itu (guru mapel / wali) hanya kelas yang diajar + kelas perwaliannya.
+     */
+    public static function studentClassIds(User $u): ?array
+    {
+        if ($u->hasRole('admin', 'superadmin', 'kepsek', 'bk', 'tu')) {
+            return null;
+        }
+        $ids = self::classes($u, false)->pluck('id')->map(fn ($v) => (int) $v)->all();
+        if ($u->kelas_wali_id) {
+            $ids[] = (int) $u->kelas_wali_id;
+        }
+
+        return array_values(array_unique($ids));
+    }
 }
