@@ -35,7 +35,7 @@ class SuratController extends TuController
 
     public function store(Request $request, string $arah)
     {
-        $request->validate(['berkas' => 'nullable|file|max:8192']);
+        $request->validate(['berkas' => 'nullable|file|max:8192|mimes:jpg,jpeg,png,webp,heic,pdf']);
         $s = TuService::saveSurat($this->me(), $arah, null, $request->all(), $request->file('berkas'));
 
         return back()->with('success', 'Surat tercatat dengan No. agenda '.$s->urut.'/'.$s->tahun.($arah === 'keluar' ? ", nomor surat {$s->nomor}." : '.'));
@@ -43,7 +43,7 @@ class SuratController extends TuController
 
     public function update(Request $request, TuSurat $surat)
     {
-        $request->validate(['berkas' => 'nullable|file|max:8192']);
+        $request->validate(['berkas' => 'nullable|file|max:8192|mimes:jpg,jpeg,png,webp,heic,pdf']);
         TuService::saveSurat($this->me(), $surat->arah, $surat, $request->all(), $request->file('berkas'));
 
         return back()->with('success', 'Surat diperbarui.');

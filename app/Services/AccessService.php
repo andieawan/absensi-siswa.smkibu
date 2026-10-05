@@ -112,6 +112,9 @@ class AccessService
     /** @return array{code:string, rate:float, override:bool} */
     public static function clearance(User $user, Student $s, bool $override, string $reason): array
     {
+        if (! ($user->hasRole('admin', 'superadmin', 'kepsek', 'bk') || $user->isWaliOf($s->class_id))) {
+            throw new UserError('Pengesahan akademik hanya oleh Wali Kelas siswa, Guru BK, Kepala Sekolah, atau Administrator.');
+        }
         if ($override && ! $user->hasRole('admin', 'superadmin', 'kepsek')) {
             throw new UserError('Dispensasi pengesahan akademik khusus Administrator / Kepala Sekolah.');
         }

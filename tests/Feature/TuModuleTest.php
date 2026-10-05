@@ -152,7 +152,7 @@ class TuModuleTest extends TestCase
         $this->actingAs($this->guru)->get("/tu/surat/{$s->id}/berkas")->assertForbidden();
         $this->actingAs($this->tu)->put("/tu/surat/{$s->id}", ['tanggal' => $s->tanggal, 'pihak' => 'Kemendikdasmen', 'perihal' => 'Edaran Dapodik', 'status' => 'Selesai', 'disposisi' => 'Operator → Waka'])->assertSessionHas('success');
         $this->assertSame(['Selesai', 'Operator → Waka'], [$s->fresh()->status, $s->fresh()->disposisi]);
-        $this->actingAs($this->tu)->post('/tu/surat/masuk', ['tanggal' => Dates::today(), 'pihak' => 'x', 'perihal' => 'y', 'berkas' => UploadedFile::fake()->create('a.exe', 5)])->assertSessionHas('error');
+        $this->actingAs($this->tu)->post('/tu/surat/masuk', ['tanggal' => Dates::today(), 'pihak' => 'x', 'perihal' => 'y', 'berkas' => UploadedFile::fake()->create('a.exe', 5)])->assertSessionHasErrors('berkas');
         // Surat > 7 hari terkunci untuk TU, tetapi Admin boleh menghapus
         $old = TuService_make($this, $this->daysAgo(30));
         $this->actingAs($this->tu)->delete("/tu/surat/{$old->id}")->assertSessionHas('error');

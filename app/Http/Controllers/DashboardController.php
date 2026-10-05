@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Services\Analytics;
+use App\Services\Assignments;
 use Illuminate\Http\Request;
 
 /** Dashboard 3 varian: Wali Kelas (harian 1 kelas), Per Mapel, Sekolah (hanya absen harian → tanpa double-count). */
@@ -44,6 +45,17 @@ class DashboardController extends Controller
             $classId = (int) $classes->first()?->id;
         }
         $subjectId = (int) ($request->query('subject') ?: ($u->subjects[0] ?? $subjects->first()?->id));
+        // Hanya Kepsek/BK/Admin yang boleh melihat kelas mana pun; guru dibatasi ke kelas & mapel yang diajarnya.
+        if (! $u->can('lihat-sekolah')) {
+            $classes = $variant === 'wali' ? $classes->where('id', $u->kelas_wali_id)->values() : Assignments::classes($u, false);
+            if (! $classes->contains('id', $classId)) {
+                $classId = (int) ($classes->first()?->id ?? -1); // -1 = tidak ada kelas → data kosong (bukan agregat)
+            }
+            $subjects = Assignments::subjectsForClass($u, $classId);
+            if (! $subjects->contains('id', $subjectId)) {
+                $subjectId = (int) ($subjects->first()?->id ?? -1);
+            }
+        }
         $class = $classes->firstWhere('id', $classId);
         $subject = $subjects->firstWhere('id', $subjectId);
 

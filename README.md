@@ -42,6 +42,10 @@ Admin → **Pasangan Mapel**; mapel/kelas yang dicentang di akun guru berlaku si
 **Riwayat Siswa dibatasi.** Guru mapel hanya melihat kelas & siswa yang diajarnya (plus kelas perwaliannya); membuka siswa
 kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua kelas.
 
+**Keamanan (audit Okt 2026).** Dashboard guru dibatasi ke kelas & mapel yang diajarnya (hanya Kepsek/BK/Admin melihat semua
+kelas); pengesahan akademik hanya oleh Wali Kelas siswa, BK, Kepsek, atau Admin; upload berkas divalidasi jenisnya
+(JPG/PNG/WEBP/HEIC/PDF); header Content-Security-Policy dasar aktif.
+
 ## Struktur kode
 ```
 app/

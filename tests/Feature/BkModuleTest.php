@@ -83,7 +83,7 @@ class BkModuleTest extends TestCase
         $this->actingAs($this->kepsek)->get("/bk/catatan/surat/{$r->id}/berkas")->assertOk();
         $this->actingAs($this->guru)->get("/bk/catatan/surat/{$r->id}/berkas")->assertForbidden();
         $bad = UploadedFile::fake()->create('virus.exe', 10);
-        $this->actingAs($this->bk)->post('/bk/catatan/surat', ['student_id' => 1, 'tanggal' => $this->daysAgo(1), 'kategori' => 'Lainnya', 'judul' => 'x', 'berkas' => $bad])->assertSessionHas('error');
+        $this->actingAs($this->bk)->post('/bk/catatan/surat', ['student_id' => 1, 'tanggal' => $this->daysAgo(1), 'kategori' => 'Lainnya', 'judul' => 'x', 'berkas' => $bad])->assertSessionHasErrors('berkas');
         $this->actingAs($this->bk)->delete("/bk/catatan/surat/{$r->id}")->assertSessionHas('success');
         Storage::disk('local')->assertMissing($r->berkas_path);
     }

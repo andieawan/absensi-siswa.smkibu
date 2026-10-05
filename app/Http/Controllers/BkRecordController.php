@@ -87,7 +87,7 @@ class BkRecordController extends Controller
     public function store(Request $request, string $jenis)
     {
         $this->module($jenis);
-        $request->validate(['berkas' => 'nullable|file|max:8192']);
+        $request->validate(['berkas' => 'nullable|file|max:8192|mimes:jpg,jpeg,png,webp,heic,pdf']);
         BkService::save($this->me(), $jenis, null, $request->all(), $request->file('berkas'));
 
         return back()->with('success', BkModules::get($jenis)['label'].' berhasil dicatat.');
@@ -96,7 +96,7 @@ class BkRecordController extends Controller
     public function update(Request $request, string $jenis, BkRecord $record)
     {
         abort_unless($record->jenis === $jenis, 404);
-        $request->validate(['berkas' => 'nullable|file|max:8192']);
+        $request->validate(['berkas' => 'nullable|file|max:8192|mimes:jpg,jpeg,png,webp,heic,pdf']);
         BkService::save($this->me(), $jenis, $record, $request->all(), $request->file('berkas'));
 
         return back()->with('success', 'Catatan diperbarui.');
