@@ -5,7 +5,7 @@
 @if($res)
     <div class="card" style="border-left:4px solid {{ count($res['skip']) ? 'var(--warn, #d97706)' : 'var(--ok, #16a34a)' }}">
         <h2 style="margin-top:0">{{ $res['dry'] ? 'Hasil pengecekan' : 'Hasil impor' }}: {{ $res['title'] }}</h2>
-        <p><b>{{ $res['ok'] }}</b> baris {{ $res['dry'] ? 'siap diimpor (belum disimpan — hilangkan centang "Cek dulu" lalu unggah lagi untuk menyimpan)' : 'berhasil ditambahkan' }}@if(count($res['skip'])), <b>{{ count($res['skip']) }}</b> baris dilewati@endif.</p>
+        <p><b>{{ $res['ok'] }}</b> baris {{ $res['dry'] ? 'siap diimpor (belum disimpan — hilangkan centang "Cek dulu" lalu unggah lagi untuk menyimpan)' : 'berhasil ditambahkan' }}@if(count($res['skip'])), <b>{{ count($res['skip']) }}</b> baris dilewati{{ '' }}@endif.</p>
         @if(count($res['skip']))
             <details open><summary style="cursor:pointer;font-weight:600">Baris yang dilewati</summary>
                 <ul style="margin:8px 0 0;padding-left:18px;font-size:13px">@foreach(array_slice($res['skip'], 0, 100) as $s)<li>{{ $s }}</li>@endforeach @if(count($res['skip']) > 100)<li>… dan {{ count($res['skip']) - 100 }} lainnya</li>@endif</ul>
