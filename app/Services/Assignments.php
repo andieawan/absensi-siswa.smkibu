@@ -35,4 +35,33 @@ class Assignments
 
         return $all->whereIn('id', $ids)->values();
     }
+
+    /**
+     * Mapel yang diajar guru pada SATU kelas — cerminan Rules::teacherAuthorization:
+     * pasangan (mapel+kelas) eksak, ditambah semua mapel akun bila kelas ada di daftar kelas akun.
+     */
+    public static function subjectsForClass(User $u, int $classId): Collection
+    {
+        $all = Subject::regular()->orderBy('name')->get();
+        if ($u->isAdmin()) {
+            return $all;
+        }
+        $ids = Pairing::where('user_id', $u->id)->where('class_id', $classId)->pluck('subject_id')->map(fn ($v) => (int) $v)->all();
+        if (in_array($classId, array_map('intval', $u->classes ?? []), true)) {
+            $ids = array_merge($ids, array_map('intval', $u->subjects ?? []));
+        }
+
+        return $all->whereIn('id', $ids)->values();
+    }
+
+    /** Peta kelas => [[id, nama], ...] untuk filter mapel di sisi klien. */
+    public static function subjectMap(User $u, Collection $classes): array
+    {
+        $map = [];
+        foreach ($classes as $c) {
+            $map[$c->id] = self::subjectsForClass($u, $c->id)->map(fn ($s) => [$s->id, $s->name])->all();
+        }
+
+        return $map;
+    }
 }

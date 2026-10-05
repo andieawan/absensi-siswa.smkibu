@@ -15,8 +15,8 @@
 <form method="get" action="{{ route('grades') }}" class="card">
     @if($tab !== 'input')<input type="hidden" name="tab" value="{{ $tab }}">@endif
     <div class="fields">
-        <div><label for="class">Kelas</label><select id="class" name="class" data-auto>@foreach($classes as $c)<option value="{{ $c->id }}" @selected($c->id === $classId)>{{ $c->name }}</option>@endforeach</select></div>
-        <div><label for="subject">Mata Pelajaran</label><select id="subject" name="subject" data-auto>@foreach($subjects as $s)<option value="{{ $s->id }}" @selected($s->id === $subjectId)>{{ $s->name }}</option>@endforeach</select></div>
+        <div><label for="class">Kelas</label><select id="class" name="class" data-auto data-subject-map='@json($subjectMap)'>@foreach($classes as $c)<option value="{{ $c->id }}" @selected($c->id === $classId)>{{ $c->name }}</option>@endforeach</select></div>
+        <div><label for="subject">Mata Pelajaran</label><select id="subject" name="subject" data-auto>@forelse($subjects as $s)<option value="{{ $s->id }}" @selected($s->id === $subjectId)>{{ $s->name }}</option>@empty<option value="">— tidak ada mapel di kelas ini —</option>@endforelse</select></div>
     </div>
 </form>
 @unless($auth['allowed'])<div class="alert alert-warn">{{ $auth['error'] ?? 'Tidak berwenang.' }}</div>@endunless

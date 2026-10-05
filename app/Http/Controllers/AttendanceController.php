@@ -21,15 +21,21 @@ class AttendanceController extends Controller
         $isWali = $u->kelas_wali_id !== null;
         $mode = in_array($r->input('mode'), ['wali', 'mapel'], true) ? $r->input('mode') : ($isWali ? 'wali' : 'mapel');
         $classes = Assignments::classes($u, $mode === 'wali');
-        $subjects = Assignments::subjects($u);
         $classId = (int) ($r->input('class') ?: $classes->first()?->id);
         if ($mode === 'wali' && $isWali && ! $u->isAdmin()) {
             $classId = $u->kelas_wali_id;
         }
-        $subjectId = $mode === 'mapel' ? (int) ($r->input('subject') ?: $subjects->first()?->id) : null;
+        $subjects = Assignments::subjectsForClass($u, $classId);
+        $subjectMap = Assignments::subjectMap($u, $classes);
+        $subjectId = null;
+        if ($mode === 'mapel') {
+            $want = (int) $r->input('subject');
+            // Hanya tampilan (GET) yang dikoreksi; simpan/hapus (POST) memakai mapel apa adanya agar ditolak oleh otorisasi.
+            $subjectId = ($r->isMethod('get') && ! $subjects->contains('id', $want)) || ! $want ? (int) $subjects->first()?->id : $want;
+        }
         $tanggal = Dates::valid($r->input('date')) ? $r->input('date') : Dates::today();
 
-        return compact('mode', 'classes', 'subjects', 'classId', 'subjectId', 'tanggal', 'isWali');
+        return compact('mode', 'classes', 'subjects', 'subjectMap', 'classId', 'subjectId', 'tanggal', 'isWali');
     }
 
     private function back(array $c, array $extra = [])

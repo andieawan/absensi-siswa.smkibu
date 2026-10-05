@@ -17,9 +17,11 @@ class GradeController extends Controller
     {
         $u = $this->me();
         $classes = Assignments::classes($u, false);
-        $subjects = Assignments::subjects($u);
         $classId = (int) ($request->query('class') ?: $classes->first()?->id);
-        $subjectId = (int) ($request->query('subject') ?: $subjects->first()?->id);
+        $subjects = Assignments::subjectsForClass($u, $classId);
+        $subjectMap = Assignments::subjectMap($u, $classes);
+        $want = (int) $request->query('subject');
+        $subjectId = $subjects->contains('id', $want) ? $want : (int) $subjects->first()?->id;
         $tab = in_array($request->query('tab'), ['aktivitas', 'rekap'], true) ? $request->query('tab') : 'input';
 
         $students = Student::active()->where('class_id', $classId)->orderBy('nama')->get();
@@ -32,7 +34,7 @@ class GradeController extends Controller
         $susulan = $editing && ! Rules::gradeEditable($u, $editing); // hanya siswa tanpa nilai yang bisa diisi
         $auth = $classId && $subjectId ? Rules::teacherAuthorization($u, $subjectId, $classId) : ['allowed' => false, 'error' => 'Pilih kelas dan mata pelajaran.'];
 
-        return view('grades.index', compact('classes', 'subjects', 'classId', 'subjectId', 'tab', 'students', 'acts', 'vals', 'editing', 'susulan', 'auth') + ['today' => Dates::today()]);
+        return view('grades.index', compact('classes', 'subjects', 'subjectMap', 'classId', 'subjectId', 'tab', 'students', 'acts', 'vals', 'editing', 'susulan', 'auth') + ['today' => Dates::today()]);
     }
 
     public function store(Request $request)

@@ -33,12 +33,12 @@
     <input type="hidden" name="mode" value="{{ $mode }}">@if($tab !== 'input')<input type="hidden" name="tab" value="{{ $tab }}">@endif
     <div class="fields">
         @if($classes->count() > 1 || $mode === 'mapel')
-            <div><label for="class">Kelas</label><select id="class" name="class" data-auto>@foreach($classes as $c)<option value="{{ $c->id }}" @selected($c->id === $classId)>{{ $c->name }}</option>@endforeach</select></div>
+            <div><label for="class">Kelas</label><select id="class" name="class" data-auto data-subject-map='@json($subjectMap)'>@foreach($classes as $c)<option value="{{ $c->id }}" @selected($c->id === $classId)>{{ $c->name }}</option>@endforeach</select></div>
         @else
             <input type="hidden" name="class" value="{{ $classId }}">
         @endif
         @if($mode === 'mapel')
-            <div><label for="subject">Mata Pelajaran</label><select id="subject" name="subject" data-auto>@foreach($subjects as $s)<option value="{{ $s->id }}" @selected($s->id === $subjectId)>{{ $s->name }}</option>@endforeach</select></div>
+            <div><label for="subject">Mata Pelajaran</label><select id="subject" name="subject" data-auto>@forelse($subjects as $s)<option value="{{ $s->id }}" @selected($s->id === $subjectId)>{{ $s->name }}</option>@empty<option value="">— tidak ada mapel di kelas ini —</option>@endforelse</select></div>
         @endif
         @if($tab === 'input')
         <div class="date-pick">

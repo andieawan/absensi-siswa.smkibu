@@ -15,7 +15,7 @@
         </div>
         <div class="field" style="margin-top:12px"><label>Peran</label>@include('admin._checks', ['name' => 'roles', 'items' => $roles, 'sel' => old('roles', ['guru'])])</div>
         <div class="field"><label>Mata pelajaran diampu</label>@include('admin._checks', ['name' => 'subjects', 'items' => $subjOpts, 'sel' => old('subjects', [])])</div>
-        <div class="field"><label>Kelas diajar</label>@include('admin._checks', ['name' => 'classes', 'items' => $classChk, 'sel' => old('classes', [])])</div>
+        <div class="field"><label>Kelas diajar</label>@include('admin._checks', ['name' => 'classes', 'items' => $classChk, 'sel' => old('classes', [])])<p class="hint" style="margin:4px 0 0">Mapel &amp; kelas dicentang di sini berlaku <b>silang</b> (semua mapel di semua kelas). Bila mapel berbeda tiap kelas (mis. B. Indonesia di X DKV 1, B. Daerah di X DKV 2), atur di tab <a href="{{ route('admin.pairings') }}">Pasangan Mapel</a>.</p></div>
         <button class="btn btn-pri">Tambah Akun</button>
     </form>
 </details>
