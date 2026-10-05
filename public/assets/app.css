@@ -289,3 +289,4 @@ tfoot th{background:#f8fafc;padding:10px 12px}
 .sc-big{width:100%;min-height:56px;font-size:17px;justify-content:center}
 @media(min-width:640px){.sc-big{width:auto;min-width:240px}}
 @media(min-width:1300px){.brand small{display:block}}
+.alert:not(:has(.alert-ic)){display:block}
