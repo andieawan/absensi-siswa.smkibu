@@ -43,6 +43,11 @@ akun guru berlaku silang (semua mapel di semua kelas itu).
 **Riwayat Siswa dibatasi.** Guru mapel hanya melihat kelas & siswa yang diajarnya (plus kelas perwaliannya); membuka siswa
 kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua kelas.
 
+**Impor Data (Admin → Impor Data).** Unduh template Excel lalu unggah untuk memasukkan **Kelas, Mapel, Guru & Staf, Siswa,
+dan Pasangan Mapel** sekaligus. Urutan yang disarankan: Kelas → Mapel → Guru & Staf → Siswa → Pasangan Mapel. Centang
+"Cek dulu" untuk melihat hasilnya tanpa menyimpan; baris bermasalah dilewati dan dijelaskan alasannya. Akun guru tanpa
+kolom Password dibuatkan password acak yang ditampilkan sekali. Peran admin tidak bisa diimpor.
+
 **Keamanan (audit Okt 2026).** Dashboard guru dibatasi ke kelas & mapel yang diajarnya (hanya Kepsek/BK/Admin melihat semua
 kelas); pengesahan akademik hanya oleh Wali Kelas siswa, BK, Kepsek, atau Admin; upload berkas divalidasi jenisnya
 (JPG/PNG/WEBP/HEIC/PDF); header Content-Security-Policy dasar aktif.

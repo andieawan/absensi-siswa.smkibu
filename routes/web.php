@@ -151,6 +151,10 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('/pasangan', [Admin\PairingController::class, 'store'])->name('pairings.store');
         Route::delete('/pasangan', [Admin\PairingController::class, 'destroy'])->name('pairings.destroy');
 
+        Route::get('/impor', [Admin\ImportController::class, 'index'])->name('import');
+        Route::get('/impor/{type}/template', [Admin\ImportController::class, 'template'])->whereIn('type', ['kelas', 'mapel', 'siswa', 'guru', 'pasangan'])->name('import.template');
+        Route::post('/impor/{type}', [Admin\ImportController::class, 'run'])->whereIn('type', ['kelas', 'mapel', 'siswa', 'guru', 'pasangan'])->middleware('throttle:20,1')->name('import.run');
+
         Route::get('/hardcopy', [Admin\HardcopyController::class, 'index'])->name('hardcopy');
         Route::get('/hardcopy/template', [Admin\HardcopyController::class, 'template'])->name('hardcopy.template');
         Route::post('/hardcopy/pratinjau', [Admin\HardcopyController::class, 'preview'])->name('hardcopy.preview');

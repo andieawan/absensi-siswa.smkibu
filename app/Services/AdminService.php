@@ -134,7 +134,7 @@ class AdminService
     }
 
     /** Impor siswa dari baris xlsx/csv. Kolom: NIS, Nama Siswa, JK, Kelas (nama kelas); opsional Nama Ortu, No HP Ortu. @return array{0:int,1:string[]} */
-    public static function importStudents(User $actor, array $hdr, array $rows): array
+    public static function importStudentRows(User $actor, array $hdr, array $rows): array
     {
         $iNis = \App\Support\Xlsx::col($hdr, ['nis']);
         $iNama = \App\Support\Xlsx::col($hdr, ['nama siswa', 'nama']);
@@ -148,7 +148,7 @@ class AdminService
         $classes = SchoolClass::pluck('id', 'name')->mapWithKeys(fn ($id, $n) => [mb_strtolower($n) => $id]);
         $ok = 0;
         $skip = [];
-        DB::transaction(function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $iOrtu, $iTelp, $classes, &$ok, &$skip) {
+        (function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $iOrtu, $iTelp, $classes, &$ok, &$skip) {
             foreach ($rows as $n => $r) {
                 $nis = trim((string) ($r[$iNis] ?? ''));
                 $nama = trim((string) ($r[$iNama] ?? ''));
@@ -168,7 +168,14 @@ class AdminService
                     $skip[] = 'Baris '.($n + 2)." ($nis): ".$e->getMessage();
                 }
             }
-        });
+        })();
+
+        return [$ok, $skip];
+    }
+
+    public static function importStudents(User $actor, array $hdr, array $rows): array
+    {
+        [$ok, $skip] = DB::transaction(fn () => self::importStudentRows($actor, $hdr, $rows));
         Audit::log('Impor Siswa', 'Siswa', $actor->nama, "$ok siswa ditambahkan, ".count($skip).' baris dilewati');
 
         return [$ok, $skip];

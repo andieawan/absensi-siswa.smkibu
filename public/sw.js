@@ -4,7 +4,7 @@
  *   halaman berisi data siswa tidak disimpan di perangkat). Bila offline, tampil offline.html.
  * - Permintaan POST (simpan absensi/nilai) tidak pernah disentuh service worker.
  */
-const VERSION = 'absensi-v9';
+const VERSION = 'absensi-v10';
 const BASE = new URL('./', self.location).pathname;
 const STATIC = ['offline.html', 'assets/app.css', 'assets/app.js', 'icons/icon-192.png', 'icons/icon-512.png'].map((p) => BASE + p);
 
