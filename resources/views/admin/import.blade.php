@@ -40,5 +40,10 @@
             </form>
         </div>
     @endforeach
+    <div class="card">
+        <h2 style="margin-top:0">⑥ 📝 Absensi Hardcopy</h2>
+        <p class="mut" style="font-size:12.5px;margin:0 0 10px">Untuk memasukkan absensi harian dari kertas: unduh template per kelas &amp; tanggal, isi status H/I/S/A, unggah, cek pratinjau, lalu simpan. Dipakai sebagai cadangan bila absensi tidak sempat dilakukan langsung di aplikasi.</p>
+        <a class="btn btn-pri" href="{{ route('admin.hardcopy') }}">Buka Upload Hardcopy →</a>
+    </div>
 </div>
 @endsection

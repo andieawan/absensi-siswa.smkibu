@@ -1,6 +1,7 @@
 @extends('layouts.app', ['title' => 'Upload Hardcopy'])
 @section('content')
 @include('admin._tabs')
+<p style="margin:0 0 12px"><a href="{{ route('admin.import') }}">← Kembali ke Impor Data</a></p>
 @php($classOpts = $classes->pluck('name', 'id')->all())
 @if($preview)
     <form method="post" action="{{ route('admin.hardcopy.commit') }}" class="card card-tight">@csrf

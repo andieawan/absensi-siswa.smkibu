@@ -116,4 +116,11 @@ $g = User::where('username', 'guru.baru')->first();
         $this->run_('kelas', [['Warna'], ['Biru']])->assertSessionHas('error');
         $this->actingAs($this->admin)->post('/admin/impor/kelas', ['file' => UploadedFile::fake()->create('x.exe', 5)])->assertSessionHasErrors('file');
     }
+
+    public function test_hardcopy_lives_under_import_data(): void
+    {
+        $html = $this->actingAs($this->admin)->get('/admin/impor')->assertOk()->assertSee('Absensi Hardcopy')->getContent();
+        $this->assertStringNotContainsString('>Upload Hardcopy<', explode('Impor data massal', $html)[0]); // tab sudah tidak ada
+        $this->actingAs($this->admin)->get('/admin/hardcopy')->assertOk()->assertSee('Kembali ke Impor Data');
+    }
 }
