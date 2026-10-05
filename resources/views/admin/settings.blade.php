@@ -5,6 +5,16 @@
 <div class="alert alert-warn"><span class="alert-ic" aria-hidden="true">!</span><span class="alert-txt"><b>Ada {{ count($pending) }} pembaruan struktur database</b> dari versi aplikasi yang baru diunggah. Fitur baru (mis. modul BK, No. HP orang tua) baru bisa dipakai setelah diperbarui.
     <form method="post" action="{{ route('admin.migrate') }}" style="margin-top:8px" data-confirm="Perbarui database sekarang? Backup otomatis dibuat lebih dulu.">@csrf<button class="btn btn-sm btn-pri" data-busy="Memperbarui…">Perbarui Database Sekarang</button></form></span></div>
 @endif
+@if(session('demo_passwords'))
+<div class="alert alert-info"><span class="alert-ic" aria-hidden="true">i</span><span class="alert-txt"><b>Akun contoh (catat sekarang, password hanya tampil sekali):</b>
+    <table class="tbl" style="margin-top:6px"><tbody>@foreach(session('demo_passwords') as $u => $pw)<tr><td class="mono">{{ $u }}</td><td class="mono">{{ $pw }}</td></tr>@endforeach</tbody></table>
+    <small>ibu.siti = wali kelas XI DKV 1 · pak.hendra = guru mapel · bu.ratna = kepala sekolah · bu.maya = guru BK · bu.tata = TU</small></span></div>
+@endif
+@if($canDemo)
+<div class="card"><h2>Coba dengan Data Contoh</h2>
+    <p class="mut" style="font-size:13px">Aplikasi masih kosong. Isi data contoh (4 kelas, 48 siswa, absensi 4 minggu, nilai, catatan BK, register surat, absensi guru/staf) untuk mencoba semua fitur. Tombol ini hilang setelah ada data kelas/siswa.</p>
+    <form method="post" action="{{ route('admin.demo') }}" data-confirm="Isi data contoh sekarang?">@csrf<button class="btn btn-pri" data-busy="Mengisi…">Isi Data Contoh</button></form></div>
+@endif
 <div class="grid g2" style="align-items:start">
     <form method="post" action="{{ route('admin.settings.update') }}" class="card">@csrf @method('PUT')
         <h2>Pengaturan Sekolah</h2>

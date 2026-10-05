@@ -163,6 +163,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::get('/log', [Admin\LogController::class, 'index'])->name('logs');
 
         Route::get('/pengaturan', [Admin\SettingController::class, 'index'])->name('settings');
+        Route::post('/data-contoh', [Admin\SettingController::class, 'demo'])->name('demo');
         Route::put('/pengaturan', [Admin\SettingController::class, 'update'])->name('settings.update');
         Route::post('/backup', [Admin\SettingController::class, 'backup'])->name('backup');
         Route::post('/perbarui-database', [Admin\SettingController::class, 'migrate'])->name('migrate');

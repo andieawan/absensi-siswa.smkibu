@@ -23,7 +23,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        return view('admin.settings', ['files' => array_slice(BackupService::files(), 0, 10), 'pending' => \App\Support\DbUpdate::pending()]);
+        return view('admin.settings', ['files' => array_slice(BackupService::files(), 0, 10), 'pending' => \App\Support\DbUpdate::pending(), 'canDemo' => ! \App\Models\SchoolClass::query()->exists() && ! \App\Models\Student::query()->exists()]);
     }
 
     public function update(Request $request)
@@ -36,6 +36,20 @@ class SettingController extends Controller
         ]));
 
         return back()->with('success', 'Pengaturan sekolah disimpan.');
+    }
+
+    /** Isi data contoh dari browser (untuk mencoba aplikasi). Hanya bila belum ada data kelas/siswa. */
+    public function demo()
+    {
+        if (\App\Models\SchoolClass::query()->exists() || \App\Models\Student::query()->exists()) {
+            throw new UserError('Data contoh hanya bisa diisi pada aplikasi yang masih kosong (belum ada kelas/siswa).');
+        }
+        BackupService::run();
+        \Database\Seeders\DemoSeeder::$passwords = [];
+        (new \Database\Seeders\DemoSeeder)->run();
+        Audit::log('Isi Data Contoh', 'Sistem', $this->me()->nama, 'Data contoh dibuat');
+
+        return back()->with('success', 'Data contoh dibuat: 4 kelas, 48 siswa, absensi, nilai, BK, surat, dan absensi guru/staf.')->with('demo_passwords', \Database\Seeders\DemoSeeder::$passwords);
     }
 
     public function backup()
