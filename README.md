@@ -35,9 +35,10 @@ Hak akses modul BK: **Guru BK & Superadmin** mencatat/mengubah semua; **Kepsek &
 ditampilkan detailnya untuk Guru BK — yang lain hanya melihat bahwa ada kasus. Scan surat disimpan di
 `storage/app/private/bk-surat` (tidak bisa dibuka langsung dari internet).
 
-**Mapel mengikuti kelas.** Di form Absensi & Nilai, daftar Mata Pelajaran hanya berisi mapel yang diajar guru di
-kelas yang dipilih. Bila mapel berbeda tiap kelas (mis. B. Indonesia di X DKV 1, B. Daerah di X DKV 2), atur di
-Admin → **Pasangan Mapel**; mapel/kelas yang dicentang di akun guru berlaku silang (semua mapel di semua kelas itu).
+**Pilih mapel dulu, lalu kelas.** Di form Absensi (mode mapel) & Nilai, guru memilih **Mata Pelajaran** (hanya mapel yang
+diajarnya), lalu daftar **Kelas** hanya berisi kelas tempat ia mengajar mapel itu. Bila mapelnya berbeda tiap kelas
+(mis. B. Indonesia di X DKV 1, B. Daerah di X DKV 2), atur di Admin → **Pasangan Mapel**; mapel/kelas yang dicentang di
+akun guru berlaku silang (semua mapel di semua kelas itu).
 
 **Riwayat Siswa dibatasi.** Guru mapel hanya melihat kelas & siswa yang diajarnya (plus kelas perwaliannya); membuka siswa
 kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua kelas.

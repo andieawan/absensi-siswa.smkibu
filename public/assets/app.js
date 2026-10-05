@@ -150,14 +150,14 @@
   // ---- Filter otomatis: <select data-auto> ----
   $$('select[data-auto]').forEach(function (s) {
     s.addEventListener('change', function () {
-      // Ganti kelas → daftar mapel hanya yang diajar guru di kelas itu.
-      if (s.dataset.subjectMap) {
-        var sub = s.form.querySelector('select[name=subject]'), m = {};
-        try { m = JSON.parse(s.dataset.subjectMap); } catch (e) {}
-        if (sub) {
-          var list = m[s.value] || [], cur = sub.value;
-          sub.innerHTML = '';
-          list.forEach(function (x) { var o = document.createElement('option'); o.value = x[0]; o.textContent = x[1]; if (String(x[0]) === cur) o.selected = true; sub.appendChild(o); });
+      // Ganti mapel → daftar kelas hanya yang diajar guru untuk mapel itu.
+      if (s.dataset.classMap) {
+        var cls = s.form.querySelector('select[name=class]'), m = {};
+        try { m = JSON.parse(s.dataset.classMap); } catch (e) {}
+        if (cls) {
+          var list = m[s.value] || [], cur = cls.value;
+          cls.innerHTML = '';
+          list.forEach(function (x) { var o = document.createElement('option'); o.value = x[0]; o.textContent = x[1]; if (String(x[0]) === cur) o.selected = true; cls.appendChild(o); });
         }
       }
       s.form.submit();

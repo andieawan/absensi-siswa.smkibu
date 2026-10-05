@@ -54,12 +54,30 @@ class Assignments
         return $all->whereIn('id', $ids)->values();
     }
 
-    /** Peta kelas => [[id, nama], ...] untuk filter mapel di sisi klien. */
-    public static function subjectMap(User $u, Collection $classes): array
+    /**
+     * Kelas tempat guru mengajar SATU mapel — kebalikan subjectsForClass (aturan sama dengan
+     * Rules::teacherAuthorization): pasangan eksak, ditambah semua kelas akun bila mapel ada di daftar mapel akun.
+     */
+    public static function classesForSubject(User $u, int $subjectId): Collection
+    {
+        $all = SchoolClass::orderBy('name')->get();
+        if ($u->isAdmin()) {
+            return $all;
+        }
+        $ids = Pairing::where('user_id', $u->id)->where('subject_id', $subjectId)->pluck('class_id')->map(fn ($v) => (int) $v)->all();
+        if (in_array($subjectId, array_map('intval', $u->subjects ?? []), true)) {
+            $ids = array_merge($ids, array_map('intval', $u->classes ?? []));
+        }
+
+        return $all->whereIn('id', $ids)->values();
+    }
+
+    /** Peta mapel => [[id, nama], ...] kelasnya, untuk filter kelas di sisi klien. */
+    public static function classMap(User $u, Collection $subjects): array
     {
         $map = [];
-        foreach ($classes as $c) {
-            $map[$c->id] = self::subjectsForClass($u, $c->id)->map(fn ($s) => [$s->id, $s->name])->all();
+        foreach ($subjects as $s) {
+            $map[$s->id] = self::classesForSubject($u, $s->id)->map(fn ($c) => [$c->id, $c->name])->all();
         }
 
         return $map;
