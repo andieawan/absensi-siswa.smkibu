@@ -15,6 +15,13 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Folder kerja wajib: bila terhapus/tidak ikut terunggah (mis. folder kosong dilewati saat ekstrak zip), buat otomatis.
+        foreach (['framework/sessions', 'framework/views', 'framework/cache/data', 'logs', 'app/private', 'app/public'] as $d) {
+            $path = storage_path($d);
+            if (! is_dir($path)) {
+                @mkdir($path, 0775, true);
+            }
+        }
     }
 
     public function boot(): void
