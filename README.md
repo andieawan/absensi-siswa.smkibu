@@ -67,7 +67,7 @@ database/migrations/        skema (tabel yang sudah ada dilewati → DB versi la
 database/seeders/           DatabaseSeeder (admin pertama), DemoSeeder (data contoh)
 resources/views/            Blade: layouts, dashboard, attendance, grades, students, bk, admin, public, letters
 routes/web.php, console.php rute web; perintah absensi:backup, absensi:admin; jadwal backup harian
-tests/                      89 tes PHPUnit (fitur & aturan bisnis)
+tests/                      Tes PHPUnit (fitur & aturan bisnis)
 ```
 
 ## Kebutuhan
@@ -135,12 +135,45 @@ tinggal kelas), kemudian klik **Mulai Tahun Ajaran Baru**. Riwayat absensi, nila
 catatan BK menyimpan kelas saat kejadian. Setelah itu atur ulang Wali Kelas di Akun Guru bila berganti.
 
 ## Perintah berguna
+Semua perintah dijalankan **di folder proyek** (yang berisi file `artisan`). Di Windows/envkit: buka terminal proyek lalu ketik
+persis seperti di bawah. Tanpa terminal (cPanel): lihat tabel "Tanpa terminal" paling bawah.
+
+**Pertama kali / pasang**
 | Perintah | Fungsi |
 |---|---|
-| `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya) |
-| `php artisan absensi:backup` | Backup sekarang (MySQL → `.sql`, SQLite → salinan file) ke `storage/app/backups` |
-| `php artisan db:seed --class=DemoSeeder` | Data contoh (hanya jika belum ada kelas) — mencetak password akun contoh. Tanpa terminal: Admin → Pengaturan → **Isi Data Contoh** |
-| `vendor/bin/phpunit` | Jalankan 89 tes otomatis (SQLite in-memory) |
+| `php artisan key:generate` | Buat `APP_KEY` di `.env` (wajib sekali; jika error 500 "No application encryption key") |
+| `php artisan migrate --force` | Buat/perbarui tabel database. Aman diulang; dipakai setelah mengganti ke versi baru |
+| `php artisan migrate:status` | Lihat migrasi mana yang sudah/belum jalan |
+| `php artisan absensi:admin nama.user` | Buat akun Administrator baru (password ditanya, min. 10 karakter) |
+| `php artisan db:seed --class=DemoSeeder` | Isi **data contoh** (hanya jika belum ada kelas) — mencetak password akun contoh |
+| `php artisan serve` | Jalankan server lokal di `http://127.0.0.1:8000` (untuk mencoba tanpa Apache/Nginx) |
+
+**Sehari-hari**
+| Perintah | Fungsi |
+|---|---|
+| `php artisan absensi:backup` | Backup database sekarang → `storage/app/backups` (MySQL `.sql`, SQLite salinan file) |
+| `php artisan down --secret=rahasia` / `php artisan up` | Mode pemeliharaan saat update (admin tetap bisa masuk lewat `/rahasia`) / hidupkan lagi |
+| `php artisan route:list` | Daftar semua alamat halaman (berguna untuk memeriksa) |
+
+**Bila tampilan/pengaturan tidak berubah setelah update** (cache lama)
+| Perintah | Fungsi |
+|---|---|
+| `php artisan optimize:clear` | Bersihkan semua cache sekaligus (config, route, view, cache) — coba ini dulu |
+| `php artisan config:clear` | Bersihkan cache konfigurasi saja (setelah mengubah `.env`) |
+| `php artisan view:clear` | Bersihkan cache tampilan (Blade) |
+| `php artisan cache:clear` | Bersihkan cache aplikasi (termasuk hitungan batas login yang terkunci) |
+
+**Pengembangan**
+| Perintah | Fungsi |
+|---|---|
+| `vendor/bin/phpunit` | Jalankan seluruh tes otomatis (SQLite in-memory, tanpa menyentuh data asli) |
+| `vendor/bin/phpunit --filter NamaTes` | Jalankan satu tes saja |
+
+**Tanpa terminal (cPanel / hosting biasa):** *Perbarui database* = Admin → Pengaturan → **Perbarui Database Sekarang** ·
+*Backup* = Admin → Pengaturan → **Backup Sekarang** · *Data contoh* = Admin → Pengaturan → **Isi Data Contoh** ·
+*Reset password pengguna* = Admin → Akun Guru → (buka akun) → **Reset** · *Pasang pertama* = buka `/pasang`.
+
+> Lupa password Administrator dan tidak ada admin lain? Buat akun baru: `php artisan absensi:admin admin2`.
 
 ## Pengganti fitur Google
 Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Penggantinya: **surat siap cetak**
