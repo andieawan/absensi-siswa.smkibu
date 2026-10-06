@@ -75,6 +75,8 @@ tests/                      Tes PHPUnit (fitur & aturan bisnis)
 - Composer 2 (atau unggah folder `vendor/` yang sudah jadi)
 - MySQL/MariaDB (database kosong sudah dibuat)
 
+> **Ubuntu Server?** Ikuti panduan lengkap langkah demi langkah di [`docs/UBUNTU.md`](docs/UBUNTU.md) (Nginx + PHP-FPM + MariaDB + HTTPS + backup).
+
 ## Instalasi (VPS / hosting dengan SSH)
 ```bash
 git clone https://github.com/andieawan/absensi-siswa.smkibu.git absensi && cd absensi
