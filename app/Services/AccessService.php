@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\UserError;
 use App\Models\DelegationToken;
+use App\Models\ClassBoardToken;
 use App\Models\ParentToken;
 use App\Models\SchoolClass;
 use App\Models\Student;
@@ -79,6 +80,37 @@ class AccessService
         Audit::log('Submit Absensi Delegasi', 'Absensi', "Ketua Kelas (token kelas #{$t->class_id})", "Tanggal: $tanggal, Total: ".count($entries).' siswa');
 
         return count($entries);
+    }
+
+    public static function canManageBoard(User $user, int $classId): bool
+    {
+        return $user->isAdmin() || $user->isWaliOf($classId);
+    }
+
+    /** Tautan aktif untuk kelas ini; dibuat bila belum ada (satu tautan per kelas, dipakai ulang). */
+    public static function ensureBoardToken(User $user, int $classId): ClassBoardToken
+    {
+        if (! self::canManageBoard($user, $classId)) {
+            throw new UserError('Tautan info kehadiran hanya dapat dikelola Wali Kelas ini atau Administrator.');
+        }
+        $t = ClassBoardToken::where('class_id', $classId)->where('status', 'aktif')->first();
+        if (! $t) {
+            $t = ClassBoardToken::create(['token' => self::randomToken('ik_'), 'class_id' => $classId, 'status' => 'aktif', 'created_at' => Dates::isoUtc(), 'created_by' => $user->id]);
+            Audit::log('Buat Tautan Info Kehadiran Kelas', 'Absensi', $user->nama, "Kelas #$classId");
+        }
+
+        return $t;
+    }
+
+    public static function revokeBoardToken(User $user, ClassBoardToken $t): void
+    {
+        if (! self::canManageBoard($user, $t->class_id)) {
+            throw new UserError('Tidak berwenang mencabut tautan ini.');
+        }
+        if ($t->status === 'aktif') {
+            $t->update(['status' => 'nonaktif', 'revoked_at' => Dates::isoUtc()]);
+            Audit::log('Cabut Tautan Info Kehadiran Kelas', 'Absensi', $user->nama, "Kelas #{$t->class_id}");
+        }
     }
 
     public static function canManageParentAccess(User $user, Student $s): bool

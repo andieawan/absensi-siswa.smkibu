@@ -61,6 +61,17 @@ class DbUpdate
         return $ok;
     }
 
+    /** Tautan info kehadiran kelas untuk wali murid siap dipakai. */
+    public static function boardReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null || app()->runningUnitTests()) {
+            $ok = \Illuminate\Support\Facades\Schema::hasTable('class_board_tokens');
+        }
+
+        return $ok;
+    }
+
     /** Kebijakan password (kolom pw_* di pengaturan sekolah) sudah ada. */
     public static function pwReady(): bool
     {

@@ -43,6 +43,8 @@ akun guru berlaku silang (semua mapel di semua kelas itu).
 **Riwayat Siswa dibatasi.** Guru mapel hanya melihat kelas & siswa yang diajarnya (plus kelas perwaliannya); membuka siswa
 kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua kelas.
 
+**Info Kehadiran untuk Wali Murid (Absensi → Riwayat, mode Wali Kelas).** Wali kelas membuat satu tautan tetap per kelas lalu mengirimnya ke grup WhatsApp wali murid (tombol *Kirim via WhatsApp*). Halaman publik `/kelas/…` menampilkan siswa yang tidak masuk (Izin/Sakit/Alpa) pada hari yang dipilih (hari ini sampai 14 hari ke belakang), diambil dari absen harian wali kelas; catatan dan NIS tidak ditampilkan. Tautan bisa dicabut kapan saja. Perlu *Perbarui Database Sekarang* (atau `php artisan migrate --force`) sekali.
+
 **Aturan password (Admin → Pengaturan → Aturan Password Pengguna).** Pilih *Sesuai aturan* (panjang minimal 1–64, plus wajib huruf / angka / simbol sesuai centang) atau *Bebas* (asal tidak kosong). Berlaku untuk akun guru baru, reset, ganti password sendiri, dan impor guru. Perlu klik *Perbarui Database Sekarang* (atau `php artisan migrate --force`) sekali setelah unggah versi ini; sebelum itu aturan tetap minimal 8 karakter.
 
 **Impor Data (Admin → Impor Data).** Unduh template Excel lalu unggah untuk memasukkan **Kelas, Mapel, Guru & Staf, Siswa,

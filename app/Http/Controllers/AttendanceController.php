@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
+use App\Models\ClassBoardToken;
 use App\Models\DelegationToken;
 use App\Models\Student;
 use App\Services\AccessService;
@@ -71,6 +72,10 @@ class AttendanceController extends Controller
             $data['sessions'] = $sessions;
             $data['activeTokens'] = DelegationToken::where('class_id', $c['classId'])->where('status', 'aktif')->where('expires_at_millis', '>', Dates::nowMillis())->orderByDesc('created_at')->get();
             $data['newToken'] = session('new_token');
+            $data['boardReady'] = \App\Support\DbUpdate::boardReady();
+            $data['board'] = $data['boardReady'] && $c['classId'] ? ClassBoardToken::where('class_id', $c['classId'])->where('status', 'aktif')->first() : null;
+            $data['boardUrl'] = $data['board'] ? route('board', $data['board']->token) : null;
+            $data['boardMsg'] = $data['board'] ? "Assalamu'alaikum Bapak/Ibu wali murid kelas ".($data['class']->name ?? '').'. Info siswa yang tidak masuk sekolah setiap hari dapat dilihat di tautan berikut: '.$data['boardUrl']."\n\n".\App\Models\SchoolSetting::current()->school_name : null;
         }
 
         return view('attendance.index', $data);
@@ -111,5 +116,24 @@ class AttendanceController extends Controller
         $t = AccessService::createDelegation($this->me(), $c['classId'], (int) $request->input('hours', 24));
 
         return $this->back($c, ['tab' => 'riwayat'])->with('new_token', $t->token)->with('success', 'Tautan delegasi dibuat.');
+    }
+
+    public function boardCreate(Request $request)
+    {
+        $c = $this->context($request);
+        if (! \App\Support\DbUpdate::boardReady()) {
+            return $this->back($c, ['tab' => 'riwayat'])->with('error', 'Fitur ini butuh pembaruan database: Admin → Pengaturan → Perbarui Database Sekarang.');
+        }
+        AccessService::ensureBoardToken($this->me(), (int) $c['classId']);
+
+        return $this->back($c, ['tab' => 'riwayat'])->with('success', 'Tautan info kehadiran kelas siap dibagikan ke wali murid.');
+    }
+
+    public function boardRevoke(Request $request, string $token)
+    {
+        $c = $this->context($request);
+        AccessService::revokeBoardToken($this->me(), ClassBoardToken::findOrFail($token));
+
+        return $this->back($c, ['tab' => 'riwayat'])->with('success', 'Tautan dicabut. Wali murid tidak bisa lagi membukanya; buat tautan baru bila perlu.');
     }
 }

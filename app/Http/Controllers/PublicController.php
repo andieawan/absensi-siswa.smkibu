@@ -73,4 +73,30 @@ class PublicController extends Controller
             'recent' => Attendance::where('student_id', $student->id)->orderByDesc('tanggal')->limit(30)->get(),
         ]);
     }
+
+    /** Papan info kehadiran kelas untuk wali murid: siapa saja yang tidak masuk pada satu hari (absen harian wali kelas). */
+    public function board(Request $request, string $token)
+    {
+        $t = \App\Support\DbUpdate::boardReady() ? \App\Models\ClassBoardToken::find($token) : null;
+        if (! $t || $t->status !== 'aktif') {
+            return response()->view('public.board', ['error' => 'Tautan info kehadiran tidak ditemukan atau sudah dicabut oleh wali kelas.'], 404);
+        }
+        $class = \App\Models\SchoolClass::find($t->class_id);
+        $wali = $class ? \App\Models\User::where('kelas_wali_id', $class->id)->first() : null;
+        $tgl = (string) $request->query('tgl');
+        if (! \App\Support\Dates::valid($tgl) || \App\Support\Dates::isFuture($tgl) || \App\Support\Dates::daysSince($tgl) > 14) {
+            $tgl = \App\Support\Dates::today();
+        }
+        $rows = \App\Models\Attendance::query()->scope($t->class_id, null)->where('tanggal', $tgl)->with('student')->get();
+        $absent = $rows->where('status', '!=', 'H')->filter(fn ($r) => $r->student)->sortBy(fn ($r) => $r->student->nama)->values();
+        $dates = [];
+        for ($i = 0; $i <= 14; $i++) {
+            $dates[] = \Carbon\CarbonImmutable::createFromFormat('Y-m-d', \App\Support\Dates::today())->subDays($i)->format('Y-m-d');
+        }
+
+        return view('public.board', [
+            'error' => null, 'class' => $class, 'wali' => $wali, 'tgl' => $tgl, 'dates' => $dates,
+            'recorded' => $rows->isNotEmpty(), 'absent' => $absent, 'total' => $rows->count(), 'hadir' => $rows->where('status', 'H')->count(),
+        ]);
+    }
 }

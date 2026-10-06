@@ -123,6 +123,24 @@
                 @endforeach</div>
             @endif
         </div>
+        <div class="card">
+            <h2>Info Kehadiran untuk Wali Murid</h2>
+            <p class="mut" style="font-size:12px">Satu tautan tetap untuk seluruh wali murid kelas ini (kirim ke grup WhatsApp kelas). Halamannya menampilkan siswa yang <b>tidak masuk</b> pada hari tertentu, diambil dari absen harian. Nama siswa terlihat oleh siapa pun yang memegang tautan, jadi bagikan hanya ke grup wali murid kelas.</p>
+            @if(! $boardReady)
+                <div class="alert alert-warn">Perlu pembaruan database dulu (Admin → Pengaturan → Perbarui Database Sekarang).</div>
+            @elseif($board)
+                <div class="share-box">
+                    <code class="link" id="blnk">{{ $boardUrl }}</code>
+                    <div class="row">
+                        <button type="button" class="btn btn-sm" data-copy="#blnk">Salin Tautan</button>
+                        <a class="btn btn-sm btn-wa" target="_blank" rel="noopener" href="{{ \App\Support\WhatsApp::share($boardMsg) }}">Kirim via WhatsApp</a>
+                    </div>
+                </div>
+                <form method="post" action="{{ route('attendance.board.revoke', $board->token) }}" class="inline" data-confirm="Cabut tautan ini? Wali murid tidak bisa membukanya lagi.">@csrf {!! $hidden() !!}<button class="btn btn-sm btn-danger" style="margin-top:8px">Cabut Tautan</button></form>
+            @else
+                <form method="post" action="{{ route('attendance.board') }}">@csrf {!! $hidden() !!}<button class="btn btn-pri" @disabled(! $auth['allowed'])>Buat Tautan Info Kehadiran</button></form>
+            @endif
+        </div>
     @endif
     <div class="card card-tight">
         <div class="row" style="padding:14px 16px;justify-content:space-between;border-bottom:1px solid var(--line)">
