@@ -125,7 +125,7 @@
         </div>
         <div class="card">
             <h2>Info Kehadiran untuk Wali Murid</h2>
-            <p class="mut" style="font-size:12px">Satu tautan tetap untuk seluruh wali murid kelas ini (kirim ke grup WhatsApp kelas). Halamannya menampilkan siswa yang <b>tidak masuk</b> pada hari tertentu, diambil dari absen harian. Nama siswa terlihat oleh siapa pun yang memegang tautan, jadi bagikan hanya ke grup wali murid kelas.</p>
+            <p class="mut" style="font-size:12px">Satu tautan tetap untuk seluruh wali murid kelas ini (kirim ke grup WhatsApp kelas). Orang tua memasukkan <b>NIS ananda + 4 digit terakhir nomor HP orang tua</b> yang terdaftar, lalu hanya melihat kehadiran anaknya sendiri (absen harian, 14 hari terakhir). Daftar siswa lain tidak pernah ditampilkan. Pastikan No. HP orang tua sudah terisi di data siswa.</p>
             @if(! $boardReady)
                 <div class="alert alert-warn">Perlu pembaruan database dulu (Admin → Pengaturan → Perbarui Database Sekarang).</div>
             @elseif($board)

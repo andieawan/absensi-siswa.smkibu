@@ -31,6 +31,7 @@ Route::middleware('throttle:publik')->group(function () {
     Route::post('/presensi/{token}', [PublicController::class, 'delegationSubmit']);
     Route::get('/wali/{token}', [PublicController::class, 'parent'])->name('parent');
     Route::get('/kelas/{token}', [PublicController::class, 'board'])->name('board');
+    Route::post('/kelas/{token}', [PublicController::class, 'boardCheck'])->name('board.check')->middleware('throttle:8,1');
 });
 
 // ---- Autentikasi ----

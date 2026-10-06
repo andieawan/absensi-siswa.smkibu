@@ -31,24 +31,49 @@ class ClassBoardTest extends TestCase
         $this->actingAs($this->wali)->get('/absensi?mode=wali&tab=riwayat')->assertOk()->assertSee(route('board', $t));
     }
 
-    public function test_page_lists_only_absent_students_without_notes(): void
+    private function check(string $t, string $nis, string $pin)
     {
-        $this->markAtt(801, 1, 'H');
-        $this->markAtt(802, 2, 'S');
-        $this->markAtt(803, 3, 'A');
-        $this->markAtt(804, 4, 'A', 1);               // absen mapel: tidak dihitung
-        $this->markAtt(805, 5, 'A', null, null, 2);   // kelas lain
-        $t = $this->token();
-        $r = $this->get(route('board', $t))->assertOk();
-        $r->assertSee('Siswa 2')->assertSee('Siswa 3')->assertDontSee('Siswa 1')->assertDontSee('Siswa 4')->assertDontSee('Siswa 5')->assertDontSee('RAHASIA-CATATAN');
+        return $this->post(route('board.check', $t), ['nis' => $nis, 'pin' => $pin]);
     }
 
-    public function test_no_session_message_and_all_present(): void
+    public function test_parent_sees_only_own_child_after_verification(): void
+    {
+        \App\Models\Student::find(2)->update(['telp_ortu' => '6281234560002']);
+        \App\Models\Student::find(3)->update(['telp_ortu' => '6281234560003']);
+        $this->markAtt(801, 2, 'S');
+        $this->markAtt(802, 3, 'A');
+        $t = $this->token();
+        $nis2 = \App\Models\Student::find(2)->nis;
+        $r = $this->check($t, $nis2, '0002')->assertOk();
+        $r->assertSee('Siswa 2')->assertSee('Sakit')->assertDontSee('Siswa 3');
+        $this->get(route('board', $t))->assertOk()->assertDontSee('Siswa 2')->assertDontSee('Siswa 3');
+    }
+
+    public function test_wrong_pin_unknown_nis_or_no_phone_fail_identically(): void
+    {
+        \App\Models\Student::find(2)->update(['telp_ortu' => '6281234560002']);
+        $t = $this->token();
+        $nis2 = \App\Models\Student::find(2)->nis;
+        $nis3 = \App\Models\Student::find(3)->nis; // tanpa nomor orang tua
+        foreach ([[$nis2, '9999'], ['000000', '0002'], [$nis3, '0000'], [$nis2, '']] as [$n, $p]) {
+            $this->check($t, $n, $p)->assertOk()->assertSee('tidak cocok')->assertDontSee('Siswa 2');
+        }
+    }
+
+    public function test_other_class_student_cannot_be_checked(): void
+    {
+        \App\Models\Student::find(5)->update(['telp_ortu' => '6281234560005']);
+        $t = $this->token(); // token kelas 1; siswa 5 ada di kelas 2
+        $this->check($t, \App\Models\Student::find(5)->nis, '0005')->assertSee('tidak cocok');
+    }
+
+    public function test_check_is_throttled(): void
     {
         $t = $this->token();
-        $this->get(route('board', $t))->assertOk()->assertSee('belum dicatat');
-        $this->markAtt(810, 1, 'H');
-        $this->get(route('board', $t))->assertOk()->assertSee('semua siswa masuk');
+        for ($i = 0; $i < 8; $i++) {
+            $this->check($t, 'x', '0000')->assertOk();
+        }
+        $this->check($t, 'x', '0000')->assertStatus(429);
     }
 
     public function test_revoked_or_unknown_token_is_404(): void
@@ -56,6 +81,7 @@ class ClassBoardTest extends TestCase
         $t = $this->token();
         $this->actingAs($this->wali)->post("/absensi/info-kelas/$t/cabut", ['mode' => 'wali', 'class' => 1])->assertRedirect();
         $this->get(route('board', $t))->assertNotFound();
+        $this->check($t, '1', '0000')->assertNotFound();
         $this->get('/kelas/ik_tidakada')->assertNotFound();
     }
 
@@ -68,10 +94,4 @@ class ClassBoardTest extends TestCase
         $this->assertSame('aktif', ClassBoardToken::find($t)->status);
     }
 
-    public function test_old_or_future_date_falls_back_to_today(): void
-    {
-        $this->markAtt(820, 2, 'A', null, date('Y-m-d', strtotime('-30 day')));
-        $t = $this->token();
-        $this->get(route('board', $t).'?tgl='.date('Y-m-d', strtotime('-30 day')))->assertOk()->assertDontSee('Siswa 2');
-    }
 }
