@@ -89,7 +89,7 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'old' => 'required|string',
-            'new' => ['required', 'string', 'confirmed', 'different:old', Password::min(8)],
+            'new' => ['required', 'string', 'confirmed', 'different:old', \App\Support\PasswordPolicy::rule()],
         ], [], ['old' => 'password lama', 'new' => 'password baru']);
         $user = $this->me();
         if (! Passwords::check($data['old'], $user->password_hash)) {

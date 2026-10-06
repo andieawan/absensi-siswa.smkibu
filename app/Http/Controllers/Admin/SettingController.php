@@ -31,6 +31,7 @@ class SettingController extends Controller
         AdminService::saveSettings($this->me(), $request->validate([
             'school_name' => 'required|string|max:191', 'tahun_ajaran' => 'nullable|string|max:32', 'semester' => 'required|in:Ganjil,Genap',
             'kepsek_nama' => 'nullable|string|max:191', 'bk_nama' => 'nullable|string|max:191', 'backup_retention_weeks' => 'required|integer|min:1|max:104',
+            'pw_form' => 'nullable|boolean', 'pw_mode' => 'nullable|in:aturan,bebas', 'pw_min' => 'nullable|integer|min:1|max:64', 'pw_huruf' => 'nullable|boolean', 'pw_angka' => 'nullable|boolean', 'pw_simbol' => 'nullable|boolean',
             'staff_form' => 'nullable|boolean', 'staff_mandiri' => 'nullable|boolean', 'staff_jam_masuk' => 'nullable|date_format:H:i',
             'staff_lat' => 'nullable|numeric|between:-90,90', 'staff_lng' => 'nullable|numeric|between:-180,180', 'staff_radius' => 'nullable|integer|min:0|max:5000',
         ]));

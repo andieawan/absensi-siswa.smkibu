@@ -60,4 +60,15 @@ class DbUpdate
 
         return $ok;
     }
+
+    /** Kebijakan password (kolom pw_* di pengaturan sekolah) sudah ada. */
+    public static function pwReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null || app()->runningUnitTests()) {
+            $ok = \Illuminate\Support\Facades\Schema::hasColumn('school_settings', 'pw_mode');
+        }
+
+        return $ok;
+    }
 }

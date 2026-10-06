@@ -211,6 +211,10 @@ class AdminService
             $staff = ['staff_mandiri' => ! empty($in['staff_mandiri']), 'staff_jam_masuk' => ($in['staff_jam_masuk'] ?? '') ?: '07:15',
                 'staff_lat' => $lat, 'staff_lng' => $lng, 'staff_radius' => $radius ?: null];
         }
+        if (! empty($in['pw_form']) && \App\Support\DbUpdate::pwReady()) {
+            $staff += ['pw_mode' => ($in['pw_mode'] ?? 'aturan') === 'bebas' ? 'bebas' : 'aturan', 'pw_min' => max(1, min(64, (int) ($in['pw_min'] ?? 8))),
+                'pw_huruf' => ! empty($in['pw_huruf']), 'pw_angka' => ! empty($in['pw_angka']), 'pw_simbol' => ! empty($in['pw_simbol'])];
+        }
         SchoolSetting::put($staff + [
             'school_name' => trim($in['school_name']), 'tahun_ajaran' => trim((string) ($in['tahun_ajaran'] ?? '')),
             'semester' => $in['semester'], 'kepsek_nama' => trim((string) ($in['kepsek_nama'] ?? '')),

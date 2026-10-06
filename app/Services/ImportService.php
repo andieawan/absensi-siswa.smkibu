@@ -7,6 +7,7 @@ use App\Models\Pairing;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
+use App\Support\PasswordPolicy;
 use App\Support\TahunAjaran;
 use Illuminate\Support\Facades\DB;
 
@@ -52,7 +53,7 @@ class ImportService
                 'example' => [['ibu.siti', 'Siti Rahmawati, S.Pd', 'guru', '', $k1, $m1.', '.$m2, $k1.', '.$k2], ['pak.budi', 'Budi Santoso', 'tu', '', '', '', '']],
                 'notes' => ['Wajib: Username (huruf kecil/angka/titik/strip, min. 3), Nama.',
                     'Peran: guru, kepsek, bk, tu (pisahkan koma bila lebih dari satu, mis. "guru, bk"). Kosong = guru. Peran admin tidak bisa diimpor.',
-                    'Password kosong = dibuatkan otomatis (ditampilkan SEKALI setelah impor — catat atau cetak). Bila diisi, minimal 8 karakter.',
+                    'Password kosong = dibuatkan otomatis (ditampilkan SEKALI setelah impor — catat atau cetak). Bila diisi, harus memenuhi aturan password sekolah (Admin → Pengaturan).',
                     'Wali Kelas: satu nama kelas (opsional). Mapel & Kelas: boleh banyak, pisahkan koma; berlaku silang (semua mapel di semua kelas itu).',
                     'Mapel berbeda tiap kelas? Pakai impor "Pasangan Mapel". Username yang sudah ada dilewati.'],
             ],
@@ -221,10 +222,10 @@ class ImportService
                 $pw = self::cell($r, $iP);
                 $generated = false;
                 if ($pw === '') {
-                    $pw = self::randomPassword();
+                    $pw = PasswordPolicy::generate();
                     $generated = true;
-                } elseif (mb_strlen($pw) < 8) {
-                    throw new UserError('password minimal 8 karakter');
+                } else {
+                    PasswordPolicy::assert($pw);
                 }
                 $nama = self::cell($r, $iN);
                 if ($nama === '') {
@@ -275,16 +276,5 @@ class ImportService
                 $out['ok']++;
             }
         }
-    }
-
-    private static function randomPassword(): string
-    {
-        $abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        $p = '';
-        for ($i = 0; $i < 10; $i++) {
-            $p .= $abc[random_int(0, strlen($abc) - 1)];
-        }
-
-        return $p;
     }
 }

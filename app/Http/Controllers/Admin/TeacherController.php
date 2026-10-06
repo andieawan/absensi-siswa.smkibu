@@ -8,7 +8,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Services\AdminService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rules\Password;
+use App\Support\PasswordPolicy;
 
 class TeacherController extends Controller
 {
@@ -27,7 +27,7 @@ class TeacherController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate(self::FIELDS + ['username' => 'required|string|max:64', 'password' => ['required', 'string', Password::min(8)]]);
+        $data = $request->validate(self::FIELDS + ['username' => 'required|string|max:64', 'password' => ['required', 'string', PasswordPolicy::rule()]]);
         AdminService::addTeacher($this->me(), $data);
 
         return back()->with('success', 'Akun guru berhasil ditambahkan.');
@@ -42,7 +42,7 @@ class TeacherController extends Controller
 
     public function reset(Request $request, User $user)
     {
-        $data = $request->validate(['password' => ['required', 'string', Password::min(8)]]);
+        $data = $request->validate(['password' => ['required', 'string', PasswordPolicy::rule()]]);
         AdminService::resetPassword($this->me(), $user, $data['password']);
 
         return back()->with('success', "Password {$user->username} direset. Sesi login akun tersebut otomatis keluar.");

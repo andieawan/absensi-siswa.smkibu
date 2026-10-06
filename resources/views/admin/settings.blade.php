@@ -28,6 +28,24 @@
             <div><label>Nama Guru BK</label><input type="text" name="bk_nama" value="{{ old('bk_nama', $settings->bk_nama) }}"></div>
         </div>
         <div class="field" style="margin-top:12px"><label>Simpan backup (minggu)</label><input type="number" name="backup_retention_weeks" min="1" max="104" value="{{ old('backup_retention_weeks', $settings->backup_retention_weeks ?: 8) }}"></div>
+        @if(\App\Support\DbUpdate::pwReady())
+        @php
+            $pp = \App\Support\PasswordPolicy::current();
+            $pwBebas = old('pw_form') ? old('pw_mode') === 'bebas' : $pp['mode'] === 'bebas';
+        @endphp
+        <fieldset class="fs" style="margin:16px 0 0;border:1px solid var(--line);border-radius:10px;padding:12px"><legend style="padding:0 6px;font-weight:700">Aturan Password Pengguna</legend>
+            <input type="hidden" name="pw_form" value="1">
+            <label class="chk"><input type="radio" name="pw_mode" value="aturan" @checked(! $pwBebas) onchange="document.getElementById('pw-rules').hidden=false"> Pakai aturan (disarankan)</label>
+            <label class="chk"><input type="radio" name="pw_mode" value="bebas" @checked($pwBebas) onchange="document.getElementById('pw-rules').hidden=true"> Bebas — password apa saja, asal tidak kosong</label>
+            <div id="pw-rules" @if($pwBebas) hidden @endif style="margin-top:10px">
+                <div class="field"><label for="pwmin">Panjang minimal (karakter)</label><input id="pwmin" type="number" name="pw_min" min="1" max="64" value="{{ old('pw_min', $pp['min']) }}" style="max-width:120px"></div>
+                <label class="chk"><input type="checkbox" name="pw_huruf" value="1" @checked(old('pw_form') ? old('pw_huruf') : $pp['huruf'])> Wajib mengandung <b>huruf</b></label>
+                <label class="chk"><input type="checkbox" name="pw_angka" value="1" @checked(old('pw_form') ? old('pw_angka') : $pp['angka'])> Wajib mengandung <b>angka</b></label>
+                <label class="chk"><input type="checkbox" name="pw_simbol" value="1" @checked(old('pw_form') ? old('pw_simbol') : $pp['simbol'])> Wajib mengandung <b>simbol</b> (mis. ! @ # $ %)</label>
+            </div>
+            <small class="mut" style="display:block;margin-top:6px">Berlaku untuk password baru: akun guru baru, reset oleh Admin, ganti password sendiri, dan impor. Password lama tidak ikut diubah. Password yang lebih panjang tetap lebih aman.</small>
+        </fieldset>
+        @endif
         @if(\App\Support\DbUpdate::selfReady())
         @php
             $sc = \App\Services\StaffService::config();

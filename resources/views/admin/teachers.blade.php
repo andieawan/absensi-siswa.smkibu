@@ -10,7 +10,7 @@
         <div class="fields">
             <div><label>Nama lengkap</label><input type="text" name="nama" value="{{ old('nama') }}" required></div>
             <div><label>Username</label><input type="text" name="username" value="{{ old('username') }}" autocapitalize="none" required></div>
-            <div><label>Password awal (min. 8)</label><input type="text" name="password" minlength="8" required autocomplete="off"></div>
+            <div><label>Password awal ({{ \App\Support\PasswordPolicy::hint() }})</label><input type="text" name="password" minlength="{{ \App\Support\PasswordPolicy::current()['min'] }}" required autocomplete="off"></div>
             <div><label>Wali kelas (opsional)</label>@include('partials.select', ['name' => 'kelas_wali_id', 'options' => $classOpts, 'selected' => old('kelas_wali_id')])</div>
         </div>
         <div class="field" style="margin-top:12px"><label>Peran</label>@include('admin._checks', ['name' => 'roles', 'items' => $roles, 'sel' => old('roles', ['guru'])])</div>
@@ -33,7 +33,7 @@
         <tr class="sub-row"><td colspan="7" style="padding:0;border-bottom:1px solid var(--line)"><details style="padding:6px 12px"><summary class="link-summary">Ubah / reset password — {{ $u->username }}</summary>
             <div class="grid g2" style="margin:10px 0;align-items:start">
                 <form method="post" action="{{ route('admin.teachers.reset', $u) }}">@csrf
-                    <label>Password baru (min. 8)</label><div class="row"><input type="text" name="password" minlength="8" required autocomplete="off" style="flex:1"><button class="btn btn-sm">Reset</button></div></form>
+                    <label>Password baru ({{ \App\Support\PasswordPolicy::hint() }})</label><div class="row"><input type="text" name="password" minlength="{{ \App\Support\PasswordPolicy::current()['min'] }}" required autocomplete="off" style="flex:1"><button class="btn btn-sm">Reset</button></div></form>
                 <form method="post" action="{{ route('admin.teachers.update', $u) }}">@csrf @method('PUT')
                     <div class="field"><label>Nama</label><input type="text" name="nama" value="{{ $u->nama }}" required></div>
                     <div class="field"><label>Wali kelas</label>@include('partials.select', ['name' => 'kelas_wali_id', 'options' => $classOpts, 'selected' => $u->kelas_wali_id])</div>
