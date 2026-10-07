@@ -7,6 +7,7 @@ use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\AdminService;
+use App\Services\DeleteService;
 use Illuminate\Http\Request;
 use App\Support\PasswordPolicy;
 
@@ -53,5 +54,12 @@ class TeacherController extends Controller
         $on = AdminService::toggle($this->me(), $user);
 
         return back()->with('success', $on ? "Akun {$user->username} diaktifkan." : "Akun {$user->username} dinonaktifkan.");
+    }
+
+    public function destroy(User $user)
+    {
+        DeleteService::deleteUser($this->me(), $user);
+
+        return back()->with('success', "Akun {$user->username} dihapus.");
     }
 }

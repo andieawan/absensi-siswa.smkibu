@@ -138,16 +138,21 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('/guru', [Admin\TeacherController::class, 'store'])->name('teachers.store');
         Route::put('/guru/{user}', [Admin\TeacherController::class, 'update'])->name('teachers.update');
         Route::post('/guru/{user}/reset', [Admin\TeacherController::class, 'reset'])->name('teachers.reset');
+        Route::delete('/guru/{user}', [Admin\TeacherController::class, 'destroy'])->name('teachers.destroy');
         Route::post('/guru/{user}/status', [Admin\TeacherController::class, 'toggle'])->name('teachers.toggle');
 
         Route::get('/siswa', [Admin\StudentController::class, 'index'])->name('students');
         Route::post('/siswa', [Admin\StudentController::class, 'store'])->name('students.store');
         Route::put('/siswa/{student}', [Admin\StudentController::class, 'update'])->name('students.update');
         Route::post('/siswa/impor', [Admin\StudentController::class, 'import'])->name('students.import');
+        Route::post('/siswa/hapus-massal', [Admin\StudentController::class, 'bulkDestroy'])->name('students.bulk');
+        Route::delete('/siswa/{student}', [Admin\StudentController::class, 'destroy'])->name('students.destroy');
 
         Route::get('/kelas', [Admin\MasterController::class, 'index'])->name('master');
         Route::post('/kelas', [Admin\MasterController::class, 'storeClass'])->name('classes.store');
         Route::put('/kelas/{class}', [Admin\MasterController::class, 'updateClass'])->name('classes.update');
+        Route::delete('/kelas/{class}', [Admin\MasterController::class, 'destroyClass'])->name('classes.destroy');
+        Route::delete('/mapel/{subject}', [Admin\MasterController::class, 'destroySubject'])->name('subjects.destroy');
         Route::post('/mapel', [Admin\MasterController::class, 'storeSubject'])->name('subjects.store');
         Route::put('/mapel/{subject}', [Admin\MasterController::class, 'updateSubject'])->name('subjects.update');
 

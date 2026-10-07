@@ -32,11 +32,20 @@
         <div><button class="btn">Cari</button></div>
     </div>
 </form>
+@if($rp === 'admin.')
+<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <form id="bulkform" method="post" action="{{ route('admin.students.bulk') }}" class="inline" data-confirm="Hapus siswa yang dicentang? Hanya siswa tanpa riwayat (presensi/nilai/BK) yang terhapus; cadangan dibuat otomatis.">@csrf<button class="btn btn-sm btn-danger">Hapus yang dicentang</button></form>
+    @if($fc)
+    <form method="post" action="{{ route('admin.students.bulk') }}" class="inline" data-confirm="Hapus SEMUA siswa di kelas ini yang belum punya riwayat? Cadangan dibuat otomatis.">@csrf<input type="hidden" name="class_id" value="{{ $fc }}"><button class="btn btn-sm btn-danger">Hapus semua siswa kelas ini</button></form>
+    @endif
+    <small class="mut">Untuk membersihkan salah input/impor. Siswa yang sudah punya riwayat tidak dihapus; ubah statusnya menjadi Nonaktif/Pindah/Keluar.</small>
+</div>
+@endif
 <div class="card card-tight"><div class="scroll"><table class="tbl tbl-cards">
-    <thead><tr><th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>HP Ortu</th><th>Status</th><th class="r">Edit</th></tr></thead>
+    <thead><tr>@if($rp === 'admin.')<th><input type="checkbox" aria-label="Pilih semua" onclick="document.querySelectorAll('input.pick').forEach(function(c){c.checked=this.checked}.bind(this))"></th>@endif<th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>HP Ortu</th><th>Status</th><th class="r">Edit</th></tr></thead>
     <tbody>
     @forelse($list as $s)
-        <tr><td class="mono" data-label="NIS">{{ $s->nis }}</td><td class="card-title" style="order:-1"><b>{{ $s->nama }}</b></td><td data-label="JK">{{ $s->jk }}</td><td data-label="Kelas">{{ $s->schoolClass->name ?? '-' }}</td><td class="mono" data-label="HP ortu">{{ \App\Support\WhatsApp::display($s->telp_ortu) }}</td>
+        <tr>@if($rp === 'admin.')<td data-label="Pilih"><input class="pick" type="checkbox" name="ids[]" value="{{ $s->id }}" form="bulkform" aria-label="Pilih {{ $s->nama }}"></td>@endif<td class="mono" data-label="NIS">{{ $s->nis }}</td><td class="card-title" style="order:-1"><b>{{ $s->nama }}</b></td><td data-label="JK">{{ $s->jk }}</td><td data-label="Kelas">{{ $s->schoolClass->name ?? '-' }}</td><td class="mono" data-label="HP ortu">{{ \App\Support\WhatsApp::display($s->telp_ortu) }}</td>
             <td data-label="Status"><span @class(['badge', 'b-ok' => $s->status === 'aktif', 'b-warn' => $s->status !== 'aktif'])>{{ $s->status }}</span></td>
             <td class="r"><details><summary class="link-summary">Ubah data</summary>
                 <form method="post" action="{{ route($rp.'students.update', $s) }}" style="text-align:left;min-width:240px;margin:8px 0">@csrf @method('PUT')
@@ -47,9 +56,12 @@
                     <div class="field"><label>Nama Orang Tua/Wali</label><input type="text" name="nama_ortu" value="{{ $s->nama_ortu }}" maxlength="191"></div>
                     <div class="field"><label>No. HP/WA Orang Tua</label><input type="tel" name="telp_ortu" value="{{ $s->telp_ortu ? \App\Support\WhatsApp::display($s->telp_ortu) : '' }}" inputmode="tel" placeholder="08xxxxxxxxxx" maxlength="32"></div>
                     <small>NIS tidak dapat diubah.</small><br><button class="btn btn-sm btn-pri" style="margin-top:6px">Simpan</button>
-                </form></details></td></tr>
+                </form>
+                @if($rp === 'admin.')
+                <form method="post" action="{{ route('admin.students.destroy', $s) }}" style="text-align:left;margin:8px 0" data-confirm="Hapus siswa {{ $s->nama }}? Hanya bisa bila belum punya riwayat.">@csrf @method('DELETE')<button class="btn btn-sm btn-danger">Hapus siswa</button></form>
+                @endif</details></td></tr>
     @empty
-        <tr><td colspan="7" class="empty">Belum ada siswa.</td></tr>
+        <tr><td colspan="8" class="empty">Belum ada siswa.</td></tr>
     @endforelse
     </tbody>
 </table></div>@include('partials.pager', ['p' => $list])</div>

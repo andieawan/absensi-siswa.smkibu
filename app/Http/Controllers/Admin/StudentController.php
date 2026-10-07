@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Services\AdminService;
+use App\Services\DeleteService;
 use App\Support\Xlsx;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -58,5 +59,29 @@ class StudentController extends Controller
         $msg = "Impor selesai: $ok siswa ditambahkan.".($skip ? ' Dilewati: '.implode('; ', array_slice($skip, 0, 8)).(count($skip) > 8 ? '; …' : '') : '');
 
         return back()->with($skip ? 'warning' : 'success', $msg);
+    }
+
+    public function destroy(Student $student)
+    {
+        DeleteService::deleteStudent($this->me(), $student);
+
+        return back()->with('success', "Siswa {$student->nama} dihapus.");
+    }
+
+    /** Hapus beberapa siswa terpilih, atau semua siswa di satu kelas (hanya yang belum punya riwayat). */
+    public function bulkDestroy(Request $request)
+    {
+        $in = $request->validate(['ids' => 'array', 'ids.*' => 'integer', 'class_id' => 'nullable|integer']);
+        $ids = $in['ids'] ?? [];
+        if (! $ids && ! empty($in['class_id'])) {
+            $ids = Student::where('class_id', $in['class_id'])->pluck('id')->all();
+        }
+        if (! $ids) {
+            throw new UserError('Pilih siswa yang akan dihapus.');
+        }
+        $r = DeleteService::deleteStudents($this->me(), $ids);
+        $msg = "{$r['deleted']} siswa dihapus.".($r['skipped'] ? ' Tidak dihapus karena sudah punya riwayat ('.count($r['skipped']).'): '.implode('; ', array_slice($r['skipped'], 0, 5)).(count($r['skipped']) > 5 ? '; …' : '').'. Ubah statusnya (Nonaktif/Pindah/Keluar) sebagai gantinya.' : '');
+
+        return back()->with($r['skipped'] ? 'warning' : 'success', $msg);
     }
 }

@@ -14,7 +14,8 @@
                         <div><label>Tahun ajaran</label><input type="text" name="tahun_ajaran" value="{{ $c->tahun_ajaran }}" placeholder="2026/2027"></div>
                         <div><label>Semester</label>@include('partials.select', ['name' => 'semester', 'options' => $sem, 'selected' => $c->semester])</div>
                     </div><button class="btn btn-sm btn-pri" style="margin-top:8px">Simpan</button>
-                </form></details>
+                </form>
+                <form method="post" action="{{ route('admin.classes.destroy', $c) }}" class="inline" style="margin-top:8px" data-confirm="Hapus kelas {{ $c->name }}? Hanya bisa bila kelas kosong dan belum punya riwayat.">@csrf @method('DELETE')<button class="btn btn-sm btn-danger">Hapus kelas</button></form></details>
         @endforeach
         <details open style="border-top:1px solid var(--line);padding-top:10px;margin-top:8px"><summary style="cursor:pointer;font-weight:700">+ Tambah kelas</summary>
             <form method="post" action="{{ route('admin.classes.store') }}" style="margin-top:8px">@csrf
@@ -31,6 +32,9 @@
         @foreach($subjects as $s)
             <form method="post" action="{{ route('admin.subjects.update', $s) }}" class="row" style="margin-bottom:6px">@csrf @method('PUT')
                 <input type="text" name="name" value="{{ $s->name }}" style="flex:1" required aria-label="Nama mapel"><button class="btn btn-sm">Simpan</button></form>
+            @unless((int) $s->id === (int) config('absensi.bk_subject_id'))
+            <form method="post" action="{{ route('admin.subjects.destroy', $s) }}" class="inline" data-confirm="Hapus mapel {{ $s->name }}? Hanya bisa bila belum dipakai di presensi/nilai.">@csrf @method('DELETE')<button class="btn btn-sm btn-danger" style="margin:-2px 0 8px">Hapus {{ $s->name }}</button></form>
+            @endunless
         @endforeach
         <form method="post" action="{{ route('admin.subjects.store') }}" class="row" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">@csrf
             <input type="text" name="name" placeholder="Nama mata pelajaran baru" style="flex:1" required aria-label="Mapel baru"><button class="btn btn-pri btn-sm">Tambah</button></form>

@@ -41,7 +41,8 @@
                     <div class="field"><label>Mapel</label>@include('admin._checks', ['name' => 'subjects', 'items' => $subjOpts, 'sel' => $u->subjects])</div>
                     <div class="field"><label>Kelas</label>@include('admin._checks', ['name' => 'classes', 'items' => $classChk, 'sel' => $u->classes])</div>
                     <button class="btn btn-sm btn-pri">Simpan Perubahan</button></form>
-            </div></details></td></tr>
+            </div>
+            <form method="post" action="{{ route('admin.teachers.destroy', $u) }}" data-confirm="Hapus akun {{ $u->username }}? Hanya bisa bila belum punya riwayat; bila sudah, nonaktifkan saja.">@csrf @method('DELETE')<button class="btn btn-sm btn-danger">Hapus akun</button></form></details></td></tr>
     @endforeach
     </tbody>
 </table></div></div>

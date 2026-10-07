@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Services\AdminService;
+use App\Services\DeleteService;
 use Illuminate\Http\Request;
 
 /** Data master: kelas & mata pelajaran. */
@@ -44,5 +45,19 @@ class MasterController extends Controller
         AdminService::saveSubject($this->me(), $subject, $request->validate(['name' => 'required|string|max:191'])['name']);
 
         return back()->with('success', 'Mata pelajaran diperbarui.');
+    }
+
+    public function destroyClass(SchoolClass $class)
+    {
+        DeleteService::deleteClass($this->me(), $class);
+
+        return back()->with('success', "Kelas {$class->name} dihapus.");
+    }
+
+    public function destroySubject(Subject $subject)
+    {
+        DeleteService::deleteSubject($this->me(), $subject);
+
+        return back()->with('success', "Mapel {$subject->name} dihapus.");
     }
 }
