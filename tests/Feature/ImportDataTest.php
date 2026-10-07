@@ -73,6 +73,15 @@ class ImportDataTest extends TestCase
         $this->assertNotNull(Student::where('nis', 'N-900')->first());
     }
 
+    public function test_import_students_with_status_and_clean_names(): void
+    {
+        $cls = SchoolClass::first()->name;
+        $this->run_('siswa', [['NIS', 'Nama', 'L/P', 'Kelas', 'Status'], ['9001/1.096', 'ANIS  SA\'ADAH', 'P', $cls, 'Aktif'], ['9002/2.096', 'RAMADAN', 'L', $cls, 'Nonaktif'], ['9003/3.096', 'X', 'L', $cls, 'aneh']])
+            ->assertSessionHas('import_result', fn ($r) => $r['ok'] === 2 && count($r['skip']) === 1);
+        $this->assertSame('ANIS SA\'ADAH', Student::where('nis', '9001/1.096')->value('nama'));
+        $this->assertSame('nonaktif', Student::where('nis', '9002/2.096')->value('status'));
+    }
+
     public function test_import_teachers_with_generated_password_roles_and_assignments(): void
     {
         $cls = SchoolClass::orderBy('id')->get();

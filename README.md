@@ -50,7 +50,7 @@ kelas lain ditolak (403). Admin, Kepala Sekolah, BK, dan TU tetap melihat semua 
 **Impor Data (Admin → Impor Data).** Unduh template Excel lalu unggah untuk memasukkan **Kelas, Mapel, Guru & Staf, Siswa,
 dan Pasangan Mapel** sekaligus. Urutan yang disarankan: Kelas → Mapel → Guru & Staf → Siswa → Pasangan Mapel. Centang
 "Cek dulu" untuk melihat hasilnya tanpa menyimpan; baris bermasalah dilewati dan dijelaskan alasannya. Akun guru tanpa
-kolom Password dibuatkan password acak yang ditampilkan sekali. Peran admin tidak bisa diimpor.
+kolom Password dibuatkan password acak yang ditampilkan sekali. Peran admin tidak bisa diimpor. Impor Siswa menerima kolom opsional **Status** (aktif/nonaktif/pindah/…); spasi ganda pada nama dirapikan otomatis.
 
 **Keamanan (audit Okt 2026).** Dashboard guru dibatasi ke kelas & mapel yang diajarnya (hanya Kepsek/BK/Admin melihat semua
 kelas); pengesahan akademik hanya oleh Wali Kelas siswa, BK, Kepsek, atau Admin; upload berkas divalidasi jenisnya

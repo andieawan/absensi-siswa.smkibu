@@ -141,6 +141,7 @@ class AdminService
         $iJk = \App\Support\Xlsx::col($hdr, ['jk', 'jenis kelamin', 'l/p']);
         $iKelas = \App\Support\Xlsx::col($hdr, ['kelas']);
         $iOrtu = \App\Support\Xlsx::col($hdr, ['nama ortu', 'nama orang tua', 'nama wali', 'orang tua']);
+        $iStatus = \App\Support\Xlsx::col($hdr, ['status']);
         $iTelp = \App\Support\Xlsx::col($hdr, ['no hp ortu', 'hp ortu', 'no hp', 'no. hp', 'telp ortu', 'telepon', 'no wa', 'whatsapp']);
         if ($iNis === null || $iNama === null || $iKelas === null) {
             throw new UserError('Kolom wajib: NIS, Nama Siswa, JK, Kelas (nama kelas sama persis dengan data kelas).');
@@ -148,7 +149,7 @@ class AdminService
         $classes = SchoolClass::pluck('id', 'name')->mapWithKeys(fn ($id, $n) => [mb_strtolower($n) => $id]);
         $ok = 0;
         $skip = [];
-        (function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $iOrtu, $iTelp, $classes, &$ok, &$skip) {
+        (function () use ($actor, $rows, $iNis, $iNama, $iJk, $iKelas, $iOrtu, $iTelp, $iStatus, $classes, &$ok, &$skip) {
             foreach ($rows as $n => $r) {
                 $nis = trim((string) ($r[$iNis] ?? ''));
                 $nama = trim((string) ($r[$iNama] ?? ''));
@@ -161,7 +162,9 @@ class AdminService
                     if ($nama === '' || ! in_array($jk, ['L', 'P'], true)) {
                         throw new UserError('nama/JK tidak valid');
                     }
-                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => $nama, 'jk' => $jk, 'class_id' => $cid, 'status' => 'aktif',
+                    $status = $iStatus !== null ? mb_strtolower(trim((string) ($r[$iStatus] ?? ''))) : '';
+                    $status = $status === '' || $status === 'aktif' ? 'aktif' : (array_key_exists($status, Student::STATUSES) ? $status : throw new UserError('status tidak dikenal (aktif/nonaktif/pindah/lulus/berhenti/keluar)'));
+                    self::saveStudent($actor, null, ['nis' => $nis, 'nama' => preg_replace('/\s+/u', ' ', $nama), 'jk' => $jk, 'class_id' => $cid, 'status' => $status,
                         'nama_ortu' => $iOrtu !== null ? trim((string) ($r[$iOrtu] ?? '')) : '', 'telp_ortu' => $iTelp !== null ? trim((string) ($r[$iTelp] ?? '')) : ''], false);
                     $ok++;
                 } catch (UserError $e) {

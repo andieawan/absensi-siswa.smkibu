@@ -45,7 +45,7 @@ class ImportService
                 'title' => 'Siswa', 'icon' => '🎓', 'file' => 'Template_Impor_Siswa.xlsx',
                 'cols' => ['NIS', 'Nama Siswa', 'JK', 'Kelas', 'Nama Ortu', 'No HP Ortu'],
                 'example' => [['2025001', 'Ahmad Fauzi', 'L', $k1, 'Bpk. Slamet', '081234567890'], ['2025002', 'Siti Aisyah', 'P', $k1, '', '']],
-                'notes' => ['Wajib: NIS, Nama Siswa, JK (L/P), Kelas.', 'Kelas harus sudah ada & ditulis persis seperti di data kelas (impor Kelas dulu bila perlu).', 'NIS yang sudah terdaftar dilewati. Nama Ortu & No HP Ortu opsional (untuk tombol WhatsApp).'],
+                'notes' => ['Wajib: NIS, Nama Siswa, JK (L/P), Kelas.', 'Kelas harus sudah ada & ditulis persis seperti di data kelas (impor Kelas dulu bila perlu).', 'NIS yang sudah terdaftar dilewati. Nama Ortu & No HP Ortu opsional (untuk tombol WhatsApp).', 'Kolom Status opsional (aktif, nonaktif, pindah, lulus, berhenti, keluar); kosong = aktif.'],
             ],
             'guru' => [
                 'title' => 'Guru & Staf', 'icon' => '👩‍🏫', 'file' => 'Template_Impor_Guru_Staf.xlsx',
