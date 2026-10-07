@@ -194,3 +194,6 @@ Gunakan **HTTPS** dan `APP_DEBUG=false` di produksi. Di balik Cloudflare/proxy s
 
 ## Integrasi API (untuk aplikasi lain)
 API v1 hanya-baca dengan kunci per aplikasi: Admin → **Integrasi API**. Scope: `kelas:baca`, `mapel:baca`, `siswa:baca`, `siswa:kontak`, `kehadiran:baca`; batas permintaan per kunci; OpenAPI di `/api/v1/openapi.json`. Panduan lengkap: [docs/API.md](docs/API.md). Nilai & catatan BK tidak diekspos.
+
+## Jurusan
+Admin → **Jurusan**: daftar kode + nama jurusan (mis. RPL — Rekayasa Perangkat Lunak), pembuatan kelas sekaligus (tingkat × jurusan × jumlah rombel → `X RPL 1…n`, yang sudah ada dilewati), dan tombol *Daftarkan otomatis* untuk kode jurusan yang sudah dipakai kelas. Di Kelas & Mapel, kolom Jurusan menjadi pilihan dari daftar ini. Butuh *Perbarui Database Sekarang* (tabel `jurusan`).

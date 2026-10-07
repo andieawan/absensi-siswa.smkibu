@@ -16,7 +16,11 @@ class MasterController extends Controller
 
     public function index()
     {
-        return view('admin.master', ['classes' => SchoolClass::withCount('students')->orderBy('name')->get(), 'subjects' => Subject::orderBy('name')->get()]);
+        $majorOpts = \App\Support\DbUpdate::jurusanReady()
+            ? \App\Models\Jurusan::orderBy('kode')->get()->mapWithKeys(fn ($m) => [$m->kode => $m->kode.($m->nama !== $m->kode ? ' — '.$m->nama : '')])->all()
+            : null;
+
+        return view('admin.master', ['classes' => SchoolClass::withCount('students')->orderBy('jurusan')->orderBy('name')->get(), 'subjects' => Subject::orderBy('name')->get(), 'majorOpts' => $majorOpts]);
     }
 
     public function storeClass(Request $request)

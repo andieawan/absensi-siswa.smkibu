@@ -93,4 +93,15 @@ class DbUpdate
 
         return $ok;
     }
+
+    /** Daftar jurusan (tabel `jurusan`) siap dipakai. */
+    public static function jurusanReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null || app()->runningUnitTests()) {
+            $ok = \Illuminate\Support\Facades\Schema::hasTable('jurusan');
+        }
+
+        return $ok;
+    }
 }

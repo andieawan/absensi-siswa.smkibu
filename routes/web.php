@@ -156,6 +156,13 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
         Route::post('/mapel', [Admin\MasterController::class, 'storeSubject'])->name('subjects.store');
         Route::put('/mapel/{subject}', [Admin\MasterController::class, 'updateSubject'])->name('subjects.update');
 
+        Route::get('/jurusan', [Admin\MajorController::class, 'index'])->name('majors');
+        Route::post('/jurusan', [Admin\MajorController::class, 'store'])->name('majors.store');
+        Route::post('/jurusan/sinkron', [Admin\MajorController::class, 'sync'])->name('majors.sync');
+        Route::post('/jurusan/kelas', [Admin\MajorController::class, 'makeClasses'])->name('majors.classes');
+        Route::put('/jurusan/{jurusan}', [Admin\MajorController::class, 'update'])->name('majors.update');
+        Route::delete('/jurusan/{jurusan}', [Admin\MajorController::class, 'destroy'])->name('majors.destroy');
+
         Route::get('/pasangan', [Admin\PairingController::class, 'index'])->name('pairings');
         Route::post('/pasangan', [Admin\PairingController::class, 'store'])->name('pairings.store');
         Route::delete('/pasangan', [Admin\PairingController::class, 'destroy'])->name('pairings.destroy');
