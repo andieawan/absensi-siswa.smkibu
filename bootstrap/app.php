@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [SecurityHeaders::class, EnsureActiveUser::class]);
         $middleware->api(append: [SecurityHeaders::class]);
+        // Di belakang proxy HTTPS (Cloudflare Tunnel, Nginx Proxy Manager, dll.): isi TRUSTED_PROXIES di .env ('*' atau daftar IP dipisah koma).
+        if ($proxies = env('TRUSTED_PROXIES')) {
+            $middleware->trustProxies(at: $proxies === '*' ? '*' : array_map('trim', explode(',', $proxies)));
+        }
         $middleware->alias(['api.key' => \App\Http\Middleware\AuthenticateApiKey::class]);
         $middleware->prepend(\App\Http\Middleware\LegacyLinks::class);
         $middleware->redirectGuestsTo(fn () => route('login'));
