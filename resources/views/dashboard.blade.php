@@ -118,7 +118,7 @@
             <h2>Daftar Siswa Perlu Perhatian @if($dual)<span class="badge b-bad">{{ $dual }} sinyal prioritas (absen + nilai turun)</span>@endif</h2>
             <small>Diurutkan berdasarkan tingkat signifikansi ketidakhadiran &amp; dampak akademik</small>
         </div>
-        <div class="seg">
+        <div class="seg seg-scroll">
             <a href="{{ $q(['cat' => null]) }}" @class(['on' => $cat === 'all'])>Semua ({{ count($attention) }})</a>
             @foreach(['alpa_tinggi' => 'Alpa Tinggi', 'sakit_tinggi' => 'Sakit Tinggi', 'izin_tinggi' => 'Izin Tinggi', 'jarang_masuk_gabungan' => 'Jarang Masuk'] as $k => $label)
                 <a href="{{ $q(['cat' => $k]) }}" @class(['on' => $cat === $k])>{{ $label }}</a>
