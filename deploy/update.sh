@@ -23,6 +23,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+step "Izin folder"
+mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
+fix_perms() {
+  chown -R "$OWNER":"$WEB" storage bootstrap/cache
+  chmod -R ug+rwX storage bootstrap/cache
+  find storage bootstrap/cache -type d -exec chmod g+s {} +   # file baru ikut grup www-data
+}
+fix_perms
+
 step "Mode pemeliharaan"
 php artisan down >/dev/null 2>&1 && DOWN=1 || true
 
@@ -52,10 +61,7 @@ php artisan migrate --force
 
 step "Bersihkan cache"
 php artisan optimize:clear
-
-step "Izin folder"
-chown -R "$OWNER":"$WEB" storage bootstrap/cache
-chmod -R ug+rwX storage bootstrap/cache
+fix_perms   # file log/cache yang baru dibuat root/artisan
 
 step "Muat ulang PHP-FPM"
 FPM="$(systemctl list-units --type=service --no-legend 'php*-fpm.service' 2>/dev/null | awk '{print $1}' | head -1)"
