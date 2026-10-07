@@ -154,6 +154,14 @@ Ikut cadangkan juga `.env` dan folder `storage/app/private` (scan surat BK/TU): 
 - [ ] Hapus `ADMIN_PASSWORD` dari `.env` bila pernah diisi.
 
 ## 13. Memperbarui ke versi baru
+**Cara singkat (disarankan):**
+```bash
+cd /var/www/absensi
+sudo bash deploy/update.sh
+```
+Skrip ini membuat backup, `git pull`, `composer install`, `migrate`, membersihkan cache, memperbaiki izin, dan memuat ulang PHP-FPM; aplikasi otomatis kembali aktif walau ada langkah yang gagal.
+
+Cara manual (setara):
 ```bash
 cd /var/www/absensi
 php artisan down --secret=rahasia           # opsional: mode pemeliharaan
