@@ -191,3 +191,6 @@ Login Google, Google Docs, dan Google Sheets dari versi React tidak dipakai. Pen
 CSRF & escaping bawaan Laravel, password bcrypt, sesi dicabut saat password diganti/direset atau akun dinonaktifkan,
 pembatasan laju login & halaman publik, token delegasi/wali acak 192-bit, header keamanan (X-Frame-Options, nosniff).
 Gunakan **HTTPS** dan `APP_DEBUG=false` di produksi. Di balik Cloudflare/proxy set `TRUST_PROXIES=true`.
+
+## Integrasi API (untuk aplikasi lain)
+API v1 hanya-baca dengan kunci per aplikasi: Admin → **Integrasi API**. Scope: `kelas:baca`, `mapel:baca`, `siswa:baca`, `siswa:kontak`, `kehadiran:baca`; batas permintaan per kunci; OpenAPI di `/api/v1/openapi.json`. Panduan lengkap: [docs/API.md](docs/API.md). Nilai & catatan BK tidak diekspos.

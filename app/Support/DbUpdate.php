@@ -72,6 +72,17 @@ class DbUpdate
         return $ok;
     }
 
+    /** Kunci API (integrasi aplikasi lain) siap dipakai. */
+    public static function apiReady(): bool
+    {
+        static $ok = null;
+        if ($ok === null || app()->runningUnitTests()) {
+            $ok = \Illuminate\Support\Facades\Schema::hasTable('api_keys');
+        }
+
+        return $ok;
+    }
+
     /** Kebijakan password (kolom pw_* di pengaturan sekolah) sudah ada. */
     public static function pwReady(): bool
     {

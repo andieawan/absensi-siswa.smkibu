@@ -175,6 +175,11 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
 
         Route::get('/log', [Admin\LogController::class, 'index'])->name('logs');
 
+        Route::get('/integrasi', [Admin\ApiKeyController::class, 'index'])->name('api');
+        Route::post('/integrasi', [Admin\ApiKeyController::class, 'store'])->name('api.store');
+        Route::post('/integrasi/{key}/cabut', [Admin\ApiKeyController::class, 'revoke'])->name('api.revoke');
+        Route::delete('/integrasi/{key}', [Admin\ApiKeyController::class, 'destroy'])->name('api.destroy');
+
         Route::get('/pengaturan', [Admin\SettingController::class, 'index'])->name('settings');
         Route::post('/data-contoh', [Admin\SettingController::class, 'demo'])->name('demo');
         Route::put('/pengaturan', [Admin\SettingController::class, 'update'])->name('settings.update');

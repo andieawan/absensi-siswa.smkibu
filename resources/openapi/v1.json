@@ -1,0 +1,48 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "API Absensi Siswa SMK Islam Bustanul Ulum", "version": "1.0.0", "description": "API hanya-baca. Autentikasi: header `Authorization: Bearer <kunci>` (atau `X-API-Key`). Kunci dibuat di Admin → Integrasi API. Kunci tidak diterima lewat query string."},
+  "servers": [{"url": "/api/v1"}],
+  "components": {
+    "securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}},
+    "parameters": {
+      "page": {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}},
+      "per_page": {"name": "per_page", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+    },
+    "schemas": {
+      "Error": {"type": "object", "properties": {"error": {"type": "object", "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}}},
+      "Meta": {"type": "object", "properties": {"page": {"type": "integer"}, "per_page": {"type": "integer"}, "total": {"type": "integer"}, "last_page": {"type": "integer"}}},
+      "Kelas": {"type": "object", "properties": {"id": {"type": "integer"}, "nama": {"type": "string"}, "jurusan": {"type": "string", "nullable": true}, "angkatan": {"type": "string", "nullable": true}, "tahun_ajaran": {"type": "string", "nullable": true}, "semester": {"type": "string", "nullable": true}, "jumlah_siswa_aktif": {"type": "integer"}}},
+      "Mapel": {"type": "object", "properties": {"id": {"type": "integer"}, "nama": {"type": "string"}}},
+      "Siswa": {"type": "object", "properties": {"id": {"type": "integer"}, "nis": {"type": "string"}, "nama": {"type": "string"}, "jk": {"type": "string"}, "kelas_id": {"type": "integer"}, "kelas": {"type": "string", "nullable": true}, "status": {"type": "string"}, "nama_ortu": {"type": "string", "nullable": true, "description": "Hanya dengan izin siswa:kontak"}, "telp_ortu": {"type": "string", "nullable": true, "description": "Format 62…; hanya dengan izin siswa:kontak"}}},
+      "Kehadiran": {"type": "object", "properties": {"id": {"type": "integer"}, "siswa_id": {"type": "integer"}, "kelas_id": {"type": "integer"}, "mapel_id": {"type": "integer", "nullable": true}, "tanggal": {"type": "string", "format": "date"}, "status": {"type": "string", "enum": ["H", "I", "S", "A"]}, "status_label": {"type": "string"}, "dicatat_via": {"type": "string", "nullable": true}}},
+      "Rekap": {"type": "object", "properties": {"siswa_id": {"type": "integer"}, "total": {"type": "integer"}, "hadir": {"type": "integer"}, "izin": {"type": "integer"}, "sakit": {"type": "integer"}, "alpa": {"type": "integer"}, "persen_hadir": {"type": "number"}, "batas_minimal": {"type": "number"}, "memenuhi": {"type": "boolean"}}}
+    },
+    "responses": {
+      "401": {"description": "Kunci tidak ada/salah/dicabut", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "403": {"description": "Kunci tidak punya izin (scope) yang diperlukan", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "429": {"description": "Melebihi batas permintaan per menit (lihat header Retry-After)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+    }
+  },
+  "security": [{"bearer": []}],
+  "paths": {
+    "/ping": {"get": {"summary": "Uji kunci (tanpa izin khusus)", "responses": {"200": {"description": "OK"}, "401": {"$ref": "#/components/responses/401"}}}},
+    "/kelas": {"get": {"summary": "Daftar kelas — izin kelas:baca", "parameters": [{"$ref": "#/components/parameters/page"}, {"$ref": "#/components/parameters/per_page"}], "responses": {"200": {"description": "OK"}, "401": {"$ref": "#/components/responses/401"}, "403": {"$ref": "#/components/responses/403"}, "429": {"$ref": "#/components/responses/429"}}}},
+    "/kelas/{id}": {"get": {"summary": "Detail kelas — izin kelas:baca", "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}], "responses": {"200": {"description": "OK"}, "404": {"description": "Tidak ditemukan"}}}},
+    "/mapel": {"get": {"summary": "Daftar mata pelajaran — izin mapel:baca", "parameters": [{"$ref": "#/components/parameters/page"}, {"$ref": "#/components/parameters/per_page"}], "responses": {"200": {"description": "OK"}, "403": {"$ref": "#/components/responses/403"}}}},
+    "/siswa": {"get": {"summary": "Daftar siswa — izin siswa:baca", "parameters": [
+      {"$ref": "#/components/parameters/page"}, {"$ref": "#/components/parameters/per_page"},
+      {"name": "kelas_id", "in": "query", "schema": {"type": "integer"}},
+      {"name": "status", "in": "query", "schema": {"type": "string", "default": "aktif", "description": "aktif (default), lulus, pindah, berhenti, nonaktif, keluar, atau semua"}},
+      {"name": "q", "in": "query", "schema": {"type": "string"}, "description": "Cari nama / NIS"}
+    ], "responses": {"200": {"description": "OK"}, "403": {"$ref": "#/components/responses/403"}}}},
+    "/siswa/{id}": {"get": {"summary": "Detail siswa — izin siswa:baca", "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}], "responses": {"200": {"description": "OK"}, "404": {"description": "Tidak ditemukan"}}}},
+    "/siswa/{id}/rekap": {"get": {"summary": "Rekap kehadiran seluruh waktu per siswa — izin kehadiran:baca", "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}], "responses": {"200": {"description": "OK"}, "404": {"description": "Tidak ditemukan"}}}},
+    "/kehadiran": {"get": {"summary": "Data kehadiran — izin kehadiran:baca (tanpa catatan/keterangan)", "parameters": [
+      {"$ref": "#/components/parameters/page"}, {"name": "per_page", "in": "query", "schema": {"type": "integer", "maximum": 500, "default": 100}},
+      {"name": "dari", "in": "query", "schema": {"type": "string", "format": "date"}, "description": "Default 30 hari terakhir"},
+      {"name": "sampai", "in": "query", "schema": {"type": "string", "format": "date"}, "description": "Default hari ini; rentang maksimal 366 hari"},
+      {"name": "jenis", "in": "query", "schema": {"type": "string", "enum": ["harian", "mapel", "semua"], "default": "harian"}},
+      {"name": "kelas_id", "in": "query", "schema": {"type": "integer"}}, {"name": "siswa_id", "in": "query", "schema": {"type": "integer"}}, {"name": "mapel_id", "in": "query", "schema": {"type": "integer"}}
+    ], "responses": {"200": {"description": "OK"}, "422": {"description": "Parameter tidak valid"}}}}
+  }
+}
