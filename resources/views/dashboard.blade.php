@@ -116,7 +116,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card" id="perhatian" data-swap>
     <div class="head" style="border:0;padding:0;margin-bottom:10px">
         <div>
             <h2>Daftar Siswa Perlu Perhatian @if($dual)<span class="badge b-bad">{{ $dual }} sinyal prioritas (absen + nilai turun)</span>@endif</h2>

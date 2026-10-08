@@ -312,4 +312,24 @@
       }
     } catch (e) {}
   })();
+
+  // ---- Ganti isi area [data-swap] tanpa muat ulang halaman (posisi layar tetap) ----
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-swap] a[href]');
+    if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || a.target) return;
+    var box = a.closest('[data-swap]');
+    if (!box.id || !window.fetch || !window.DOMParser || a.pathname !== location.pathname) return;
+    e.preventDefault();
+    var url = a.href.split('#')[0];
+    box.style.opacity = '.55';
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' }).then(function (r) {
+      if (!r.ok || r.redirected && new URL(r.url).pathname !== location.pathname) throw 0;
+      return r.text();
+    }).then(function (t) {
+      var n = new DOMParser().parseFromString(t, 'text/html').getElementById(box.id);
+      if (!n) throw 0;
+      box.replaceWith(n);
+      history.replaceState(null, '', url + '#' + box.id);
+    }).catch(function () { location.href = a.href; });
+  });
 })();
