@@ -33,6 +33,16 @@ class ImportController extends Controller
         }
         if ($type === 'absensi') {
             [$hdr, $rows] = $this->mergeSheets(Xlsx::readAllSheets($f->getRealPath(), $f->getClientOriginalName()));
+        } elseif ($type === 'nilai') {
+            // Dibaca menurut urutan kolom: judul tiap sheet dibuang (sheet lama kadang berjudul keliru).
+            $hdr = [];
+            $rows = [];
+            foreach (Xlsx::readAllSheets($f->getRealPath(), $f->getClientOriginalName()) as $sheet) {
+                array_shift($sheet);
+                foreach ($sheet as $r) {
+                    $rows[] = $r;
+                }
+            }
         } else {
             [$hdr, $rows] = Xlsx::readWithHeader($f->getRealPath(), $f->getClientOriginalName());
         }

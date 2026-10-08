@@ -22,14 +22,14 @@
 @endif
 <div class="card">
     <h2 style="margin-top:0">Impor data massal</h2>
-    <p class="mut" style="font-size:13px;margin:0">Urutan yang disarankan: <b>① Kelas → ② Mapel → ③ Guru &amp; Staf → ④ Siswa → ⑤ Pasangan Mapel → ⑥ Riwayat Absensi</b>. Unduh template, isi di Excel/Google Sheets, lalu unggah (.xlsx atau .csv). Centang <b>Cek dulu</b> untuk melihat hasilnya tanpa menyimpan.</p>
+    <p class="mut" style="font-size:13px;margin:0">Urutan yang disarankan: <b>① Kelas → ② Mapel → ③ Guru &amp; Staf → ④ Siswa → ⑤ Pasangan Mapel → ⑥ Riwayat Absensi → ⑦ Riwayat Nilai</b>. Unduh template, isi di Excel/Google Sheets, lalu unggah (.xlsx atau .csv). Centang <b>Cek dulu</b> untuk melihat hasilnya tanpa menyimpan.</p>
     @unless($xlsx)<div class="alert alert-warn" style="margin-top:10px">Ekstensi PHP zip belum aktif di server — template .xlsx tidak bisa dibuat. Gunakan berkas .csv.</div>@endunless
 </div>
 <div class="grid g2" style="align-items:start">
-    @foreach(['kelas', 'mapel', 'guru', 'siswa', 'pasangan', 'absensi'] as $i => $k)
+    @foreach(['kelas', 'mapel', 'guru', 'siswa', 'pasangan', 'absensi', 'nilai'] as $i => $k)
         @php $t = $types[$k]; @endphp
         <div class="card">
-            <h2 style="margin-top:0">{{ ['①','②','③','④','⑤','⑥'][$i] }} {{ $t['icon'] }} {{ $t['title'] }}</h2>
+            <h2 style="margin-top:0">{{ ['①','②','③','④','⑤','⑥','⑦'][$i] }} {{ $t['icon'] }} {{ $t['title'] }}</h2>
             <p class="mut" style="font-size:12.5px;margin:0 0 6px">Kolom: <b>{{ implode(', ', $t['cols']) }}</b></p>
             <ul style="margin:0 0 10px;padding-left:18px;font-size:12.5px" class="mut">@foreach($t['notes'] as $n)<li>{{ $n }}</li>@endforeach</ul>
             <a class="btn btn-sm" href="{{ route('admin.import.template', $k) }}">⬇ Unduh template</a>
@@ -41,7 +41,7 @@
         </div>
     @endforeach
     <div class="card">
-        <h2 style="margin-top:0">⑦ 📝 Absensi Hardcopy</h2>
+        <h2 style="margin-top:0">⑧ 📝 Absensi Hardcopy</h2>
         <p class="mut" style="font-size:12.5px;margin:0 0 10px">Untuk memasukkan absensi harian dari kertas: unduh template per kelas &amp; tanggal, isi status H/I/S/A, unggah, cek pratinjau, lalu simpan. Dipakai sebagai cadangan bila absensi tidak sempat dilakukan langsung di aplikasi.</p>
         <a class="btn btn-pri" href="{{ route('admin.hardcopy') }}">Buka Upload Hardcopy →</a>
     </div>

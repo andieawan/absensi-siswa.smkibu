@@ -203,3 +203,6 @@ Admin → Impor Data → ⑥ **Riwayat Absensi**: memasukkan absensi lama dari e
 
 ## Ambang “Perlu Perhatian”
 Admin → Pengaturan → *Ambang “Perlu Perhatian”*: alpa/sakit/izin tinggi bila jumlahnya ≥ ambang (bawaan 2) dan *jarang masuk (gabungan)* bila alpa+izin+sakit ≥ ambang gabungan (bawaan 3). Berlaku di Dashboard, profil siswa, dan info wali. Butuh *Perbarui Database Sekarang*; sebelum itu dipakai bawaan.
+
+## Impor Riwayat Nilai
+Admin → Impor Data → ⑦ **Riwayat Nilai**: memasukkan nilai lama dari ekspor aplikasi sebelumnya (Timestamp, Nama Guru, Mapel, Kelas, KegiatanId, NamaKegiatan, TanggalKegiatan, TipeSkala, DataNilai berupa JSON `{"NIS":"nilai"}`). Kolom dibaca menurut urutan, .xlsx boleh banyak sheet; KegiatanId yang sudah ada dilewati sehingga aman diulang. Pakai *Cek dulu* sebelum menyimpan.

@@ -67,6 +67,16 @@ class ImportService
                     'Catatan absensi yang SUDAH ada (siswa + tanggal + mapel yang sama) tidak ditimpa. Nama Guru yang cocok dengan akun dipakai sebagai pencatat; selain itu dicatat atas nama Admin.',
                     'Kolom Timestamp diabaikan. Tanggal: YYYY-MM-DD atau DD/MM/YYYY; tanggal masa depan dilewati.'],
             ],
+            'nilai' => [
+                'title' => 'Riwayat Nilai', 'icon' => '📈', 'file' => 'Template_Impor_Riwayat_Nilai.xlsx',
+                'cols' => ['Timestamp', 'Nama Guru', 'Mapel', 'Kelas', 'KegiatanId', 'NamaKegiatan', 'TanggalKegiatan', 'TipeSkala', 'DataNilai'],
+                'example' => [['', 'Siti Rahmawati', $m1, $k1, '', 'Tugas 1', date('Y-m-d', strtotime('-7 days')), 'angka', '{"2025001":"80","2025002":"75"}']],
+                'notes' => ['Format ekspor aplikasi lama: satu baris = satu kegiatan penilaian (tugas/ulangan). Kolom DataNilai berisi JSON {"NIS":"nilai", …}.',
+                    'Urutan kolom harus tetap seperti template (judul kolom di baris pertama tiap sheet tidak dibaca, jadi sheet lama dengan judul keliru tetap aman). Berkas .xlsx boleh banyak sheet.',
+                    'TipeSkala: angka (0–100) atau huruf (A–E). Kelas & Mapel harus sudah ada persis seperti di aplikasi; NIS harus sama dengan NIS siswa di kelas itu.',
+                    'KegiatanId (kode unik dari aplikasi lama) dipakai untuk mencegah dobel: kegiatan dengan ID yang sudah ada dilewati. Kosong = dibuatkan otomatis.',
+                    'Nama Guru yang cocok dengan akun dipakai sebagai pemilik kegiatan; selain itu atas nama Admin. Nilai yang tidak valid atau NIS yang tidak dikenal dilewati dan dilaporkan; nilai lain di kegiatan yang sama tetap masuk.'],
+            ],
             'pasangan' => [
                 'title' => 'Pasangan Mapel', 'icon' => '🔗', 'file' => 'Template_Impor_Pasangan_Mapel.xlsx',
                 'cols' => ['Username', 'Mapel', 'Kelas'],
@@ -111,6 +121,7 @@ class ImportService
                 'guru' => self::guru($actor, $hdr, $rows, $out),
                 'pasangan' => self::pasangan($actor, $hdr, $rows, $out),
                 'absensi' => self::absensi($actor, $hdr, $rows, $out),
+                'nilai' => self::nilai($actor, $rows, $out),
             };
             $dry ? DB::rollBack() : DB::commit();
         } catch (\Throwable $e) {
@@ -273,6 +284,91 @@ class ImportService
             if ($added) {
                 $out['ok']++;
             }
+        }
+    }
+
+    /** Riwayat nilai format aplikasi lama. Kolom DIBACA BERDASARKAN URUTAN (judul di sheet lama kadang keliru). */
+    private static function nilai(User $actor, array $rows, array &$out): void
+    {
+        $classes = SchoolClass::get()->keyBy(fn ($c) => self::norm($c->name));
+        $subjects = Subject::get()->keyBy(fn ($s) => self::norm($s->name));
+        $users = User::get()->keyBy(fn ($u) => self::norm($u->nama));
+        $roster = [];
+        foreach ($rows as $n => $r) {
+            if (self::blank($r)) {
+                continue;
+            }
+            $row = 'Baris '.($n + 2);
+            [$ts, $guru, $mp, $kl, $kid, $nama, $tgl, $tipe, $json] = array_map(fn ($i) => self::cell($r, $i), range(0, 8));
+            $cls = $classes[self::norm($kl)] ?? null;
+            $sub = $subjects[self::norm($mp)] ?? null;
+            if (! $cls) {
+                $out['skip'][] = "$row: kelas '$kl' tidak ditemukan";
+                continue;
+            }
+            if (! $sub) {
+                $out['skip'][] = "$row: mapel '$mp' tidak ditemukan";
+                continue;
+            }
+            $tipe = strtolower($tipe);
+            if (! in_array($tipe, ['angka', 'huruf'], true)) {
+                $out['skip'][] = "$row: tipe skala '$tipe' harus angka/huruf";
+                continue;
+            }
+            if ($nama === '' || mb_strlen($nama) > 191) {
+                $out['skip'][] = "$row: nama kegiatan kosong/terlalu panjang";
+                continue;
+            }
+            $scores = json_decode($json, true);
+            if (! is_array($scores) || ! $scores) {
+                $out['skip'][] = "$row ($nama): kolom DataNilai bukan JSON {\"NIS\":\"nilai\"} yang valid";
+                continue;
+            }
+            $tanggal = self::parseDate($tgl) ?? self::parseDate($ts);
+            if (! $tanggal) {
+                $out['skip'][] = "$row ($nama): tanggal kegiatan tidak valid";
+                continue;
+            }
+            if (\App\Support\Dates::isFuture($tanggal)) {
+                $out['skip'][] = "$row ($nama): tanggal $tanggal di masa depan";
+                continue;
+            }
+            $id = $kid !== '' ? $kid : 'act-'.\Illuminate\Support\Str::uuid();
+            if (mb_strlen($id) > 64) {
+                $out['skip'][] = "$row ($nama): KegiatanId lebih dari 64 karakter";
+                continue;
+            }
+            if (\App\Models\GradeActivity::whereKey($id)->exists()) {
+                $out['skip'][] = "$row ($nama, {$cls->name}): kegiatan dengan ID ini sudah ada — dilewati";
+                continue;
+            }
+            $roster[$cls->id] ??= \App\Models\Student::where('class_id', $cls->id)->get()->keyBy(fn ($s) => self::norm($s->nis))->map(fn ($s) => $s->id)->all();
+            $vals = [];
+            foreach ($scores as $nis => $v) {
+                $nis = (string) $nis;
+                $v = trim((string) $v);
+                $sid = $roster[$cls->id][self::norm($nis)] ?? null;
+                if (! $sid) {
+                    $out['skip'][] = "$row ($nama, {$cls->name}): NIS '$nis' tidak ada di kelas ini — nilainya dilewati";
+                } elseif ($v === '') {
+                    continue; // belum mengumpulkan
+                } elseif ($tipe === 'angka' && (! is_numeric($v) || (float) $v < 0 || (float) $v > 100)) {
+                    $out['skip'][] = "$row ($nama): nilai '$v' untuk NIS '$nis' bukan angka 0–100 — dilewati";
+                } elseif ($tipe === 'huruf' && ! in_array(strtoupper($v), ['A', 'B', 'C', 'D', 'E'], true)) {
+                    $out['skip'][] = "$row ($nama): nilai '$v' untuk NIS '$nis' bukan huruf A–E — dilewati";
+                } else {
+                    $vals[$sid] = $tipe === 'huruf' ? strtoupper($v) : $v;
+                }
+            }
+            if (! $vals) {
+                $out['skip'][] = "$row ($nama, {$cls->name}): tidak ada nilai valid — kegiatan tidak dibuat";
+                continue;
+            }
+            $created = ($t = strtotime(str_replace('/', '-', $ts))) ? gmdate('Y-m-d H:i:s', $t) : now('UTC')->format('Y-m-d H:i:s');
+            \App\Models\GradeActivity::create(['id' => $id, 'teacher_id' => ($users[self::norm($guru)] ?? null)?->id ?? $actor->id, 'subject_id' => $sub->id, 'class_id' => $cls->id,
+                'nama_kegiatan' => $nama, 'tanggal_kegiatan' => $tanggal, 'tipe_skala' => $tipe, 'created_at' => $created]);
+            \App\Models\GradeValue::insert(array_map(fn ($sid, $v) => ['activity_id' => $id, 'student_id' => $sid, 'nilai' => $v], array_keys($vals), $vals));
+            $out['ok']++;
         }
     }
 
