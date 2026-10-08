@@ -41,7 +41,7 @@
     </div>
 </form>
 
-<div class="card card-tight">
+<div class="card card-tight" id="daftar-surat" data-swap>
     @forelse($list as $s)
         <article class="bk-item">
             <div class="bk-top">

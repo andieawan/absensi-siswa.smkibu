@@ -8,7 +8,7 @@
         <div><button class="btn">Cari</button></div>
     </div>
 </form>
-<div class="card card-tight"><div class="scroll"><table class="tbl"><thead><tr><th>Waktu (WIB)</th><th>Aksi</th><th>Modul</th><th>Pelaku</th><th>Detail</th></tr></thead><tbody>
+<div class="card card-tight" id="daftar-log" data-swap><div class="scroll"><table class="tbl"><thead><tr><th>Waktu (WIB)</th><th>Aksi</th><th>Modul</th><th>Pelaku</th><th>Detail</th></tr></thead><tbody>
 @forelse($logs as $r)
     <tr><td class="mono" style="white-space:nowrap">{{ rescue(fn () => \Carbon\CarbonImmutable::parse($r->timestamp)->setTimezone(\App\Support\Dates::tz())->format('Y-m-d H:i'), $r->timestamp, false) }}</td>
         <td><b>{{ $r->action }}</b></td><td>{{ $r->module }}</td><td>{{ $r->actor }}</td><td style="font-size:12px">{{ $r->details }}</td></tr>

@@ -53,7 +53,7 @@
     @if($pre)<input type="hidden" name="siswa" value="{{ $pre->id }}"><p class="hint" style="margin:8px 0 0">Menampilkan catatan <b>{{ $pre->nama }}</b> saja.</p>@endif
 </form>
 
-<div class="card card-tight">
+<div class="card card-tight" id="daftar-bk" data-swap>
     @forelse($records as $r)
         @php($masked = \App\Services\BkService::isMasked($me, $r))
         @php($canEdit = \App\Services\BkService::canEdit($me, $r))

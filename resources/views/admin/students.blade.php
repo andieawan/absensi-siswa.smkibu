@@ -41,7 +41,7 @@
     <small class="mut">Untuk membersihkan salah input/impor. Siswa yang sudah punya riwayat tidak dihapus; ubah statusnya menjadi Nonaktif/Pindah/Keluar.</small>
 </div>
 @endif
-<div class="card card-tight"><div class="scroll"><table class="tbl tbl-cards">
+<div class="card card-tight" id="daftar-siswa" data-swap><div class="scroll"><table class="tbl tbl-cards">
     <thead><tr>@if($rp === 'admin.')<th><input type="checkbox" aria-label="Pilih semua" onclick="document.querySelectorAll('input.pick').forEach(function(c){c.checked=this.checked}.bind(this))"></th>@endif<th>NIS</th><th>Nama</th><th>JK</th><th>Kelas</th><th>HP Ortu</th><th>Status</th><th class="r">Edit</th></tr></thead>
     <tbody>
     @forelse($list as $s)

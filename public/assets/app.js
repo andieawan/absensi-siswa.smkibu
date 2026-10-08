@@ -315,7 +315,7 @@
 
   // ---- Ganti isi area [data-swap] tanpa muat ulang halaman (posisi layar tetap) ----
   document.addEventListener('click', function (e) {
-    var a = e.target.closest && e.target.closest('[data-swap] a[href]');
+    var a = e.target.closest && e.target.closest('[data-swap] .pager a[href], [data-swap] .seg a[href]');
     if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || a.target) return;
     var box = a.closest('[data-swap]');
     if (!box.id || !window.fetch || !window.DOMParser || a.pathname !== location.pathname) return;

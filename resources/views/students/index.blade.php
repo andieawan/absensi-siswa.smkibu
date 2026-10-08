@@ -3,7 +3,7 @@
 @php($rc = fn ($r) => $r >= 90 ? 'ok' : ($r >= 80 ? 'warn' : 'bad'))
 <div class="head"><div><h1>Riwayat Siswa</h1><small>Profil, kehadiran, nilai, dan akses wali murid per siswa.</small></div></div>
 <div @class(['grid', 's360', 'has-sel' => (bool) $student]) style="grid-template-columns:minmax(230px,300px) 1fr;align-items:start">
-    <aside class="card card-tight">
+    <aside class="card card-tight" id="daftar-pilih" data-swap>
         <form method="get" action="{{ route('students') }}" style="padding:12px;border-bottom:1px solid var(--line)">
             @if($student)<input type="hidden" name="id" value="{{ $student->id }}">@endif
             <div class="field"><input type="search" name="q" value="{{ $q }}" placeholder="Cari nama / NIS…" aria-label="Cari siswa"></div>

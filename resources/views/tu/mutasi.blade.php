@@ -47,7 +47,7 @@
     </div>
 </form>
 
-<div class="card card-tight">
+<div class="card card-tight" id="daftar-mutasi" data-swap>
     @if($list->isEmpty())<div class="empty">Belum ada catatan mutasi.</div>@else
     <div class="scroll"><table class="tbl tbl-cards"><thead><tr><th>Tanggal</th><th>Siswa</th><th>Jenis</th><th>Kelas</th><th>Sekolah</th><th>Alasan / No. surat</th></tr></thead><tbody>
     @foreach($list as $m)
