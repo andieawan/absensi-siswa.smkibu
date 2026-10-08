@@ -46,6 +46,20 @@
             <small class="mut" style="display:block;margin-top:6px">Berlaku untuk password baru: akun guru baru, reset oleh Admin, ganti password sendiri, dan impor. Password lama tidak ikut diubah. Password yang lebih panjang tetap lebih aman.</small>
         </fieldset>
         @endif
+        @if(\App\Support\DbUpdate::attReady())
+        @php $ap = \App\Support\AttentionPolicy::current(); @endphp
+        <fieldset class="fs" style="margin:16px 0 0;border:1px solid var(--line);border-radius:10px;padding:12px"><legend style="padding:0 6px;font-weight:700">Ambang “Perlu Perhatian”</legend>
+            <input type="hidden" name="att_form" value="1">
+            <small class="mut" style="display:block;margin-bottom:8px">Siswa masuk daftar Perlu Perhatian (Dashboard, profil siswa, info wali) bila jumlah ketidakhadirannya mencapai angka berikut. Dicek berurutan: Alpa → Sakit → Izin → Gabungan.</small>
+            <div class="fields">
+                <div><label for="att_alpa">Alpa tinggi bila alpa ≥</label><input id="att_alpa" type="number" name="att_alpa" min="1" max="100" value="{{ old('att_alpa', $ap['alpa']) }}"></div>
+                <div><label for="att_sakit">Sakit tinggi bila sakit ≥</label><input id="att_sakit" type="number" name="att_sakit" min="1" max="100" value="{{ old('att_sakit', $ap['sakit']) }}"></div>
+                <div><label for="att_izin">Izin tinggi bila izin ≥</label><input id="att_izin" type="number" name="att_izin" min="1" max="100" value="{{ old('att_izin', $ap['izin']) }}"></div>
+                <div><label for="att_total">Jarang masuk (gabungan) bila total ≥</label><input id="att_total" type="number" name="att_total" min="1" max="100" value="{{ old('att_total', $ap['total']) }}"></div>
+            </div>
+            <small class="mut" style="display:block;margin-top:6px">Gabungan = alpa + izin + sakit, untuk siswa yang tidak mencapai ambang per jenis. Bawaan: 2 / 2 / 2 / 3. Perubahan langsung berlaku untuk semua data.</small>
+        </fieldset>
+        @endif
         @if(\App\Support\DbUpdate::selfReady())
         @php
             $sc = \App\Services\StaffService::config();

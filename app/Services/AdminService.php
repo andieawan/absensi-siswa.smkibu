@@ -218,6 +218,11 @@ class AdminService
             $staff += ['pw_mode' => ($in['pw_mode'] ?? 'aturan') === 'bebas' ? 'bebas' : 'aturan', 'pw_min' => max(1, min(64, (int) ($in['pw_min'] ?? 8))),
                 'pw_huruf' => ! empty($in['pw_huruf']), 'pw_angka' => ! empty($in['pw_angka']), 'pw_simbol' => ! empty($in['pw_simbol'])];
         }
+        if (! empty($in['att_form']) && \App\Support\DbUpdate::attReady()) {
+            foreach (\App\Support\AttentionPolicy::DEFAULTS as $k => $def) {
+                $staff['att_'.$k] = max(1, min(100, (int) ($in['att_'.$k] ?? $def)));
+            }
+        }
         SchoolSetting::put($staff + [
             'school_name' => trim($in['school_name']), 'tahun_ajaran' => trim((string) ($in['tahun_ajaran'] ?? '')),
             'semester' => $in['semester'], 'kepsek_nama' => trim((string) ($in['kepsek_nama'] ?? '')),

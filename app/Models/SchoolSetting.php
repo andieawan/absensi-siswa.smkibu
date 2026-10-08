@@ -11,7 +11,7 @@ class SchoolSetting extends Model
     public $timestamps = false;
     public $incrementing = false;
     protected $guarded = [];
-    protected $casts = ['id' => 'integer', 'backup_retention_weeks' => 'integer', 'staff_mandiri' => 'boolean', 'staff_lat' => 'float', 'staff_lng' => 'float', 'staff_radius' => 'integer', 'pw_min' => 'integer', 'pw_huruf' => 'boolean', 'pw_angka' => 'boolean', 'pw_simbol' => 'boolean'];
+    protected $casts = ['id' => 'integer', 'backup_retention_weeks' => 'integer', 'staff_mandiri' => 'boolean', 'staff_lat' => 'float', 'staff_lng' => 'float', 'staff_radius' => 'integer', 'pw_min' => 'integer', 'pw_huruf' => 'boolean', 'pw_angka' => 'boolean', 'pw_simbol' => 'boolean', 'att_alpa' => 'integer', 'att_sakit' => 'integer', 'att_izin' => 'integer', 'att_total' => 'integer'];
 
     private static ?self $cached = null;
 

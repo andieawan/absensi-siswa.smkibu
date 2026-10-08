@@ -42,13 +42,7 @@ class Rules
     {
         $s = self::attendanceStats($studentId);
         $total = $s['alpa'] + $s['izin'] + $s['sakit'];
-        $cat = match (true) {
-            $s['alpa'] >= 2 => 'alpa_tinggi',
-            $s['sakit'] >= 2 => 'sakit_tinggi',
-            $s['izin'] >= 2 => 'izin_tinggi',
-            $total >= 3 => 'jarang_masuk_gabungan',
-            default => null,
-        };
+        $cat = \App\Support\AttentionPolicy::category($s['alpa'], $s['izin'], $s['sakit']);
 
         return ['category' => $cat, 'alpa' => $s['alpa'], 'izin' => $s['izin'], 'sakit' => $s['sakit'], 'totalAbsen' => $total];
     }

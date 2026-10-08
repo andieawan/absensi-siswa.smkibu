@@ -114,18 +114,20 @@ class Analytics
             }
         }
         $out = [];
+        $policy = \App\Support\AttentionPolicy::current();
         foreach ($students as $s) {
             if ($classId && $s['class_id'] !== $classId) {
                 continue;
             }
             $c = $cnt[$s['id']] ?? ['A' => 0, 'I' => 0, 'S' => 0];
             $total = $c['A'] + $c['I'] + $c['S'];
-            [$cat, $sev] = match (true) {
-                $c['A'] >= 2 => ['alpa_tinggi', $c['A'] * 3 + $total],
-                $c['S'] >= 2 => ['sakit_tinggi', $c['S'] * 2 + $total],
-                $c['I'] >= 2 => ['izin_tinggi', $c['I'] * 1.5 + $total],
-                $total >= 3 => ['jarang_masuk_gabungan', $total * 2],
-                default => [null, 0],
+            $cat = \App\Support\AttentionPolicy::category($c['A'], $c['I'], $c['S'], $policy);
+            $sev = match ($cat) {
+                'alpa_tinggi' => $c['A'] * 3 + $total,
+                'sakit_tinggi' => $c['S'] * 2 + $total,
+                'izin_tinggi' => $c['I'] * 1.5 + $total,
+                'jarang_masuk_gabungan' => $total * 2,
+                default => 0,
             };
             if ($cat) {
                 $out[] = [

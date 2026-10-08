@@ -200,3 +200,6 @@ Admin → **Jurusan**: daftar kode + nama jurusan (mis. RPL — Rekayasa Perangk
 
 ## Impor Riwayat Absensi
 Admin → Impor Data → ⑥ **Riwayat Absensi**: memasukkan absensi lama dari ekspor aplikasi sebelumnya (kolom Timestamp, Nama Guru, Mata Pelajaran, Kelas, Tanggal, Hadir, Izin, Sakit, Alpa; kolom status berisi NIS dipisah koma). Berkas .xlsx boleh banyak sheet. Catatan yang sudah ada tidak ditimpa; centang *Cek dulu* untuk melihat hasil tanpa menyimpan.
+
+## Ambang “Perlu Perhatian”
+Admin → Pengaturan → *Ambang “Perlu Perhatian”*: alpa/sakit/izin tinggi bila jumlahnya ≥ ambang (bawaan 2) dan *jarang masuk (gabungan)* bila alpa+izin+sakit ≥ ambang gabungan (bawaan 3). Berlaku di Dashboard, profil siswa, dan info wali. Butuh *Perbarui Database Sekarang*; sebelum itu dipakai bawaan.
