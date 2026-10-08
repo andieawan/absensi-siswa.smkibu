@@ -290,4 +290,26 @@
     });
   }
   window.addEventListener('appinstalled', function () { if (btn) btn.classList.add('hide'); });
+
+  // ---- Pertahankan posisi scroll saat filter/tab/halaman diganti (halaman yang sama) ----
+  (function () {
+    var K = 'keepScroll';
+    function save(y) { try { sessionStorage.setItem(K, JSON.stringify({ p: location.pathname, y: y == null ? window.scrollY : y })); } catch (e) {} }
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('.pager a, .seg a, .tabs-keep a');
+      if (a && a.pathname === location.pathname && !a.closest('.nav, .bottom-nav')) {
+        var box = a.closest('.pager') ? (a.closest('.card') || a.closest('aside') || a.parentNode) : null;
+        save(box ? Math.max(0, box.getBoundingClientRect().top + window.scrollY - 80) : null); // pager: kembali ke awal daftar
+      }
+    });
+    document.addEventListener('change', function (e) { if (e.target.matches && e.target.matches('select[data-auto]')) save(); }, true);
+    try {
+      var d = JSON.parse(sessionStorage.getItem(K) || 'null');
+      sessionStorage.removeItem(K);
+      if (d && d.p === location.pathname && !location.hash && d.y > 0) {
+        if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+        window.scrollTo(0, d.y);
+      }
+    } catch (e) {}
+  })();
 })();
