@@ -303,3 +303,12 @@ html,body{max-width:100%}body{overflow-x:clip}
 .sticky-save small.hide-sm{display:none!important}
 }
 #perhatian{scroll-margin-top:76px}
+
+/* Dialog konfirmasi (pengganti confirm/alert bawaan browser) */
+.dlg-back{position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);animation:dlgIn .12s ease-out}
+.dlg{background:var(--card);border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.3);width:100%;max-width:400px;padding:20px 20px 16px}
+.dlg h2{font-size:17px;margin:0 0 6px}.dlg p{margin:0 0 18px;color:var(--ink2);line-height:1.5;white-space:pre-line}
+.dlg-act{display:flex;justify-content:flex-end;gap:8px}.dlg-act .btn{min-width:88px;justify-content:center}
+.dlg .btn-danger{background:var(--bad);color:#fff;border-color:var(--bad)}.dlg .btn-danger:hover{background:#9f1239}
+@media(max-width:480px){.dlg-back{align-items:flex-end}.dlg{max-width:none;border-radius:16px 16px 12px 12px}.dlg-act{flex-direction:column-reverse}.dlg-act .btn{width:100%;padding:12px}}
+@keyframes dlgIn{from{opacity:0}to{opacity:1}}

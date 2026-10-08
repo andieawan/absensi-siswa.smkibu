@@ -4,16 +4,67 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
+  // ---- Dialog konfirmasi/pemberitahuan sendiri (pengganti confirm()/alert() bawaan browser) ----
+  var Dlg = (function () {
+    var root, last;
+    function close() { if (root) { root.remove(); root = null; } if (last && last.focus) { try { last.focus(); } catch (e) {} } }
+    function open(msg, o) {
+      if (root) close();
+      last = document.activeElement;
+      root = document.createElement('div');
+      root.className = 'dlg-back';
+      var danger = o.danger ? ' btn-danger' : ' btn-pri';
+      root.innerHTML = '<div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-m"><h2 id="dlg-t"></h2><p id="dlg-m"></p><div class="dlg-act"></div></div>';
+      $('#dlg-t', root).textContent = o.title;
+      $('#dlg-m', root).textContent = msg;
+      var act = $('.dlg-act', root), ok = document.createElement('button');
+      ok.type = 'button'; ok.className = 'btn' + danger; ok.textContent = o.ok;
+      if (o.cancel) {
+        var no = document.createElement('button'); no.type = 'button'; no.className = 'btn'; no.textContent = o.cancel;
+        no.addEventListener('click', close); act.appendChild(no);
+      }
+      act.appendChild(ok);
+      ok.addEventListener('click', function () { close(); if (o.onOk) o.onOk(); });
+      root.addEventListener('mousedown', function (e) { if (e.target === root && o.cancel) close(); });
+      root.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+        else if (e.key === 'Tab') {
+          var b = $$('button', root), f = b[0], l = b[b.length - 1];
+          if (e.shiftKey && document.activeElement === f) { e.preventDefault(); l.focus(); }
+          else if (!e.shiftKey && document.activeElement === l) { e.preventDefault(); f.focus(); }
+        }
+      });
+      document.body.appendChild(root);
+      (o.danger && o.cancel ? $$('button', root)[0] : ok).focus(); // aksi berbahaya: fokus awal di Batal
+    }
+    return {
+      confirm: function (msg, onOk) {
+        var danger = /hapus|cabut|timpa|reset|nonaktif|kosongkan|buang/i.test(msg);
+        open(msg, { title: 'Konfirmasi', ok: danger ? 'Ya, lanjutkan' : 'Ya', cancel: 'Batal', danger: danger, onOk: onOk });
+      },
+      alert: function (msg) { open(msg, { title: 'Perhatian', ok: 'Mengerti' }); }
+    };
+  })();
+  var alert = function (m) { Dlg.alert(m); };
+
   // ---- Konfirmasi: <form data-confirm="…"> atau <a/button data-confirm="…"> ----
   document.addEventListener('submit', function (e) {
-    var m = e.target.getAttribute('data-confirm');
-    if (m && !window.confirm(m)) e.preventDefault();
+    var f = e.target, m = f.getAttribute && f.getAttribute('data-confirm');
+    if (!m || f.__ok) { f.__ok = false; return; }
+    e.preventDefault();
+    var sub = e.submitter;
+    Dlg.confirm(m, function () { f.__ok = true; if (f.requestSubmit) f.requestSubmit(sub || undefined); else f.submit(); });
   });
 
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-confirm]');
-    if (t && t.tagName !== 'FORM' && !window.confirm(t.getAttribute('data-confirm'))) {
-      e.preventDefault(); e.stopPropagation(); return;
+    if (t && t.tagName !== 'FORM') {
+      if (t.__ok) { t.__ok = false; }
+      else {
+        e.preventDefault(); e.stopPropagation();
+        Dlg.confirm(t.getAttribute('data-confirm'), function () { t.__ok = true; t.click(); });
+        return;
+      }
     }
     // Tandai semua dengan status tertentu
     var all = e.target.closest('[data-setall]');
@@ -110,10 +161,12 @@
     var v = q.getAttribute('data-quickfill');
     var empty = $$('input.score').filter(function (i) { return i.value.trim() === ''; });
     var targets = empty.length ? empty : $$('input.score');
-    if (!empty.length && !window.confirm('Semua siswa sudah bernilai. Timpa semua nilai dengan ' + v + '?')) return;
-    targets.forEach(function (i) { i.value = v; });
-    markDirty(q.closest('form'));
-    countFilled();
+    var apply = function () {
+      targets.forEach(function (i) { i.value = v; });
+      markDirty(q.closest('form'));
+      countFilled();
+    };
+    if (!empty.length) Dlg.confirm('Semua siswa sudah bernilai. Timpa semua nilai dengan ' + v + '?', apply); else apply();
   });
   document.addEventListener('input', function (e) { if (e.target.matches && e.target.matches('input.score')) countFilled(); });
   document.addEventListener('keydown', function (e) {
