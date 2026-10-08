@@ -197,3 +197,6 @@ API v1 hanya-baca dengan kunci per aplikasi: Admin → **Integrasi API**. Scope:
 
 ## Jurusan
 Admin → **Jurusan**: daftar kode + nama jurusan (mis. RPL — Rekayasa Perangkat Lunak), pembuatan kelas sekaligus (tingkat × jurusan × jumlah rombel → `X RPL 1…n`, yang sudah ada dilewati), dan tombol *Daftarkan otomatis* untuk kode jurusan yang sudah dipakai kelas. Di Kelas & Mapel, kolom Jurusan menjadi pilihan dari daftar ini. Butuh *Perbarui Database Sekarang* (tabel `jurusan`).
+
+## Impor Riwayat Absensi
+Admin → Impor Data → ⑥ **Riwayat Absensi**: memasukkan absensi lama dari ekspor aplikasi sebelumnya (kolom Timestamp, Nama Guru, Mata Pelajaran, Kelas, Tanggal, Hadir, Izin, Sakit, Alpa; kolom status berisi NIS dipisah koma). Berkas .xlsx boleh banyak sheet. Catatan yang sudah ada tidak ditimpa; centang *Cek dulu* untuk melihat hasil tanpa menyimpan.

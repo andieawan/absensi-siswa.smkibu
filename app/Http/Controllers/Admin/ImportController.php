@@ -31,9 +31,33 @@ class ImportController extends Controller
         if (! in_array(strtolower($f->getClientOriginalExtension()), ['xlsx', 'csv', 'txt'], true)) {
             throw new UserError('Format berkas harus .xlsx atau .csv.');
         }
-        [$hdr, $rows] = Xlsx::readWithHeader($f->getRealPath(), $f->getClientOriginalName());
+        if ($type === 'absensi') {
+            [$hdr, $rows] = $this->mergeSheets(Xlsx::readAllSheets($f->getRealPath(), $f->getClientOriginalName()));
+        } else {
+            [$hdr, $rows] = Xlsx::readWithHeader($f->getRealPath(), $f->getClientOriginalName());
+        }
         $r = ImportService::run($this->me(), $type, $hdr, $rows, $request->boolean('dry'));
 
         return redirect()->route('admin.import')->with('import_result', ['type' => $type, 'title' => ImportService::types()[$type]['title']] + $r);
+    }
+
+    /** Gabungkan semua sheet yang punya kolom Kelas & Tanggal; kolom disusun ulang mengikuti sheet pertama yang cocok. */
+    private function mergeSheets(array $sheets): array
+    {
+        $hdr = null;
+        $rows = [];
+        foreach ($sheets as $sheet) {
+            $h = array_map(fn ($v) => strtolower(trim((string) $v)), array_shift($sheet) ?? []);
+            if (Xlsx::col($h, ['kelas']) === null || Xlsx::col($h, ['tanggal']) === null) {
+                continue;
+            }
+            $hdr ??= $h;
+            $map = array_map(fn ($name) => array_search($name, $h, true), $hdr);
+            foreach ($sheet as $r) {
+                $rows[] = array_map(fn ($i) => $i === false ? '' : (string) ($r[$i] ?? ''), $map);
+            }
+        }
+
+        return [$hdr ?? [], $rows];
     }
 }

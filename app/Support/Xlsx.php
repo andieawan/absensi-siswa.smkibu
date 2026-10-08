@@ -141,7 +141,16 @@ class Xlsx
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         if ($ext === 'csv' || $ext === 'txt') return self::readCsv($path);
         if ($ext !== 'xlsx') throw new UserError('Format berkas harus .xlsx atau .csv.');
-        return self::readXlsx($path);
+        return self::readXlsx($path)[0] ?? [];
+    }
+
+    /** Semua sheet berkas: daftar baris per sheet (CSV = satu sheet). @return array<int, array<int, array<int, string>>> */
+    public static function readAllSheets(string $path, string $originalName): array
+    {
+        $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if ($ext === 'csv' || $ext === 'txt') return [self::readCsv($path)];
+        if ($ext !== 'xlsx') throw new UserError('Format berkas harus .xlsx atau .csv.');
+        return self::readXlsx($path, true);
     }
 
     private static function readCsv(string $path): array
@@ -162,7 +171,8 @@ class Xlsx
         return $rows;
     }
 
-    private static function readXlsx(string $path): array
+    /** @return array<int, array<int, array<int, string>>> daftar sheet (hanya sheet pertama bila !$all) */
+    private static function readXlsx(string $path, bool $all = false): array
     {
         if (!self::available()) throw new UserError('Ekstensi zip tidak aktif di server; unggah dalam format .csv.');
         $zip = new ZipArchive;
@@ -180,49 +190,57 @@ class Xlsx
                     }
                 }
             }
-            // Cari sheet pertama lewat workbook.xml + rels
-            $target = 'xl/worksheets/sheet1.xml';
+            // Cari sheet lewat workbook.xml + rels
+            $targets = [];
             $wb = $zip->getFromName('xl/workbook.xml');
             $rl = $zip->getFromName('xl/_rels/workbook.xml.rels');
             if ($wb !== false && $rl !== false) {
                 $w = @simplexml_load_string($wb);
                 $r = @simplexml_load_string($rl);
                 if ($w && $r && isset($w->sheets->sheet[0])) {
-                    $rid = (string) $w->sheets->sheet[0]->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'];
+                    $rels = [];
                     foreach ($r->Relationship as $rel) {
-                        if ((string) $rel['Id'] === $rid) {
-                            $t = (string) $rel['Target'];
-                            $target = ltrim(str_starts_with($t, '/') ? $t : 'xl/' . $t, '/');
-                        }
+                        $t = (string) $rel['Target'];
+                        $rels[(string) $rel['Id']] = ltrim(str_starts_with($t, '/') ? $t : 'xl/' . $t, '/');
+                    }
+                    foreach ($w->sheets->sheet as $sh) {
+                        $rid = (string) $sh->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'];
+                        if (isset($rels[$rid])) $targets[] = $rels[$rid];
                     }
                 }
             }
-            $sx = $zip->getFromName($target);
-            if ($sx === false) throw new UserError('Sheet pertama tidak ditemukan pada berkas.');
-            $sheet = @simplexml_load_string($sx);
-            if (!$sheet) throw new UserError('Isi sheet tidak dapat dibaca.');
-            $rows = [];
-            foreach ($sheet->sheetData->row ?? [] as $row) {
-                $cells = [];
-                foreach ($row->c as $c) {
-                    preg_match('/^([A-Z]+)/', (string) $c['r'], $m);
-                    $idx = 0;
-                    foreach (str_split($m[1] ?? 'A') as $ch) $idx = $idx * 26 + (ord($ch) - 64);
-                    $idx--;
-                    $type = (string) $c['t'];
-                    if ($type === 's') $val = $shared[(int) $c->v] ?? '';
-                    elseif ($type === 'inlineStr') $val = isset($c->is->t) ? (string) $c->is->t : implode('', array_map(fn($r) => (string) $r->t, iterator_to_array($c->is->r ?? [], false)));
-                    else $val = (string) $c->v;
-                    $cells[$idx] = trim($val);
+            if (!$targets) $targets = ['xl/worksheets/sheet1.xml'];
+            if (!$all) $targets = [$targets[0]];
+            $out = [];
+            foreach ($targets as $target) {
+                $sx = $zip->getFromName($target);
+                if ($sx === false) { if ($all) continue; throw new UserError('Sheet pertama tidak ditemukan pada berkas.'); }
+                $sheet = @simplexml_load_string($sx);
+                if (!$sheet) { if ($all) continue; throw new UserError('Isi sheet tidak dapat dibaca.'); }
+                $rows = [];
+                foreach ($sheet->sheetData->row ?? [] as $row) {
+                    $cells = [];
+                    foreach ($row->c as $c) {
+                        preg_match('/^([A-Z]+)/', (string) $c['r'], $m);
+                        $idx = 0;
+                        foreach (str_split($m[1] ?? 'A') as $ch) $idx = $idx * 26 + (ord($ch) - 64);
+                        $idx--;
+                        $type = (string) $c['t'];
+                        if ($type === 's') $val = $shared[(int) $c->v] ?? '';
+                        elseif ($type === 'inlineStr') $val = isset($c->is->t) ? (string) $c->is->t : implode('', array_map(fn($r) => (string) $r->t, iterator_to_array($c->is->r ?? [], false)));
+                        else $val = (string) $c->v;
+                        $cells[$idx] = trim($val);
+                    }
+                    if ($cells) {
+                        $max = max(array_keys($cells));
+                        $line = [];
+                        for ($i = 0; $i <= $max; $i++) $line[] = $cells[$i] ?? '';
+                        $rows[] = $line;
+                    }
                 }
-                if ($cells) {
-                    $max = max(array_keys($cells));
-                    $line = [];
-                    for ($i = 0; $i <= $max; $i++) $line[] = $cells[$i] ?? '';
-                    $rows[] = $line;
-                }
+                $out[] = $rows;
             }
-            return $rows;
+            return $out;
         } finally {
             $zip->close();
         }
