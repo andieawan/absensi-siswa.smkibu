@@ -385,4 +385,38 @@
       history.replaceState(null, '', url + '#' + box.id);
     }).catch(function () { location.href = a.href; });
   });
+
+  // ---- Reset password lewat dialog: <button data-reset-pw="url" data-user data-min data-need data-hint> ----
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-reset-pw]');
+    if (!b) return;
+    var $ = function (q, r) { return (r || document).querySelector(q); };
+    var tok = ($('meta[name=csrf-token]') || {}).content || '';
+    var min = Math.max(8, parseInt(b.dataset.min, 10) || 8), need = b.dataset.need || '';
+    var back = document.createElement('div'); back.className = 'dlg-back';
+    back.innerHTML = '<form class="dlg" method="post" role="dialog" aria-modal="true" aria-labelledby="rp-t"><input type="hidden" name="_token"><h2 id="rp-t">Reset password</h2><p class="rp-who"></p>' +
+      '<label for="rp-pw">Password baru</label><div class="row" style="gap:6px"><input id="rp-pw" name="password" type="text" required autocomplete="off" style="flex:1;font-family:inherit" spellcheck="false"><button type="button" class="btn btn-sm" data-gen>Buat otomatis</button></div>' +
+      '<small class="rp-hint" style="display:block;margin:6px 0 16px"></small><div class="dlg-act"><button type="button" class="btn" data-x>Batal</button><button class="btn btn-pri">Simpan Password</button></div></form>';
+    var f = $('form', back);
+    $('[name=_token]', f).value = tok; f.action = b.dataset.resetPw;
+    $('.rp-who', f).textContent = 'Akun: ' + (b.dataset.name || '') + ' (' + b.dataset.user + '). Akun tersebut akan otomatis keluar dari semua sesi login.';
+    $('.rp-hint', f).textContent = b.dataset.hint || '';
+    var inp = $('#rp-pw', f);
+    inp.minLength = parseInt(b.dataset.min, 10) || 1;
+    function close() { back.remove(); try { b.focus(); } catch (x) {} }
+    $('[data-x]', f).addEventListener('click', close);
+    back.addEventListener('mousedown', function (ev) { if (ev.target === back) close(); });
+    back.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { ev.preventDefault(); close(); } });
+    $('[data-gen]', f).addEventListener('click', function () {
+      var L = 'abcdefghjkmnpqrstuvwxyz', U = 'ABCDEFGHJKLMNPQRSTUVWXYZ', D = '23456789', S = '!@#$%*?', pick = function (c) { var a = new Uint32Array(1); crypto.getRandomValues(a); return c[a[0] % c.length]; };
+      var out = [pick(L), pick(U), pick(D)]; if (need.indexOf('s') > -1) out.push(pick(S));
+      var all = L + U + D;
+      while (out.length < Math.max(10, min)) out.push(pick(all));
+      for (var i = out.length - 1; i > 0; i--) { var a = new Uint32Array(1); crypto.getRandomValues(a); var j = a[0] % (i + 1), t = out[i]; out[i] = out[j]; out[j] = t; }
+      inp.value = out.join(''); inp.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(inp.value).catch(function () {});
+      $('.rp-hint', f).textContent = 'Password dibuat dan disalin. Catat/kirim ke guru sebelum menyimpan.';
+    });
+    document.body.appendChild(back); inp.focus();
+  });
 })();
