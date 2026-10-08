@@ -41,6 +41,8 @@ class DashboardController extends Controller
         $classId = $request->has('class') ? (int) $request->query('class') : ($isWali ? $u->kelas_wali_id : (int) $classes->first()?->id);
         if ($variant === 'wali') {
             $classId = $u->kelas_wali_id;
+        } elseif ($variant === 'sekolah' && ! $request->has('class') && $u->can('lihat-sekolah')) {
+            $classId = 0; // bawaan dashboard sekolah = agregat semua kelas
         } elseif ($variant === 'mapel' && ! $classId) {
             $classId = (int) $classes->first()?->id;
         }

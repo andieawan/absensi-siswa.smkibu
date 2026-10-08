@@ -1,7 +1,7 @@
 @extends('layouts.app', ['title' => 'Riwayat Siswa'])
 @section('content')
 @php($rc = fn ($r) => $r >= 90 ? 'ok' : ($r >= 80 ? 'warn' : 'bad'))
-<div class="head"><div><h1>Riwayat Siswa (Student 360)</h1><small>Profil, kehadiran, pola absen, nilai, dan akses wali murid dalam satu halaman.</small></div></div>
+<div class="head"><div><h1>Riwayat Siswa</h1><small>Profil, kehadiran, nilai, dan akses wali murid per siswa.</small></div></div>
 <div @class(['grid', 's360', 'has-sel' => (bool) $student]) style="grid-template-columns:minmax(230px,300px) 1fr;align-items:start">
     <aside class="card card-tight">
         <form method="get" action="{{ route('students') }}" style="padding:12px;border-bottom:1px solid var(--line)">
@@ -10,6 +10,7 @@
             <select name="class" data-auto aria-label="Filter kelas"><option value="0">Semua kelas</option>@foreach($classes as $c)<option value="{{ $c->id }}" @selected($c->id === $fc)>{{ $c->name }}</option>@endforeach</select>
             <noscript><button class="btn btn-sm" style="margin-top:8px">Cari</button></noscript>
         </form>
+        <div style="padding:8px 14px;font-size:12.5px;color:var(--mut)" aria-live="polite"><b class="mono">{{ number_format($list->total()) }}</b> siswa{{ $q ? ' cocok' : '' }}</div>
         <div style="max-height:62vh;overflow:auto">
             @forelse($list as $s)
                 <a href="{{ route('students', array_filter(['id' => $s->id, 'q' => $q ?: null, 'class' => $fc ?: null, 'page' => request('page')])) }}" class="stu" style="color:inherit;text-decoration:none;{{ $student && $s->id === $student->id ? 'background:#eef2ff' : '' }}">

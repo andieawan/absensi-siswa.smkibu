@@ -79,7 +79,7 @@ class AuthTest extends TestCase
         $this->actingAs($this->bk)->get('/bk/presensi')->assertOk();
         $this->actingAs($this->admin)->get('/admin/guru')->assertOk();
         $this->actingAs($this->kepsek)->get('/?v=sekolah')->assertOk()->assertSee('Dashboard Sekolah');
-        $this->actingAs($this->wali)->get('/')->assertOk()->assertSee('Dashboard Wali Kelas');
-        $this->actingAs($this->guru)->get('/?v=mapel&class=1&subject=2')->assertOk()->assertSee('Dashboard Guru Mapel');
+        $this->actingAs($this->wali)->get('/')->assertOk()->assertSee('Wali Kelas ·');
+        $this->actingAs($this->guru)->get('/?v=mapel&class=1&subject=2')->assertOk()->assertSee('Guru Mapel ·');
     }
 }

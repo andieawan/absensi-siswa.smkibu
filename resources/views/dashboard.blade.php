@@ -3,9 +3,9 @@
 @php
     $rc = fn ($r) => $r >= 90 ? 'ok' : ($r >= 80 ? 'warn' : 'bad');
     $title = match ($variant) {
-        'wali' => 'Dashboard Wali Kelas — '.($class->name ?? '-'),
-        'sekolah' => 'Dashboard Sekolah (Kepsek) — Agregat Harian',
-        default => 'Dashboard Guru Mapel — '.($subject->name ?? '-'),
+        'wali' => 'Wali Kelas · '.($class->name ?? '-'),
+        'sekolah' => 'Dashboard Sekolah',
+        default => 'Guru Mapel · '.($subject->name ?? '-'),
     };
     $q = fn (array $o = []) => route('dashboard', array_filter(array_merge(['v' => $variant, 'class' => $variant === 'wali' ? null : $classId, 'subject' => $variant === 'mapel' ? $subjectId : null, 'cat' => $cat === 'all' ? null : $cat], $o), fn ($v) => $v !== null));
 @endphp
@@ -41,7 +41,7 @@
     <div class="alert alert-info">Belum ada data kelas. @can('admin')<a href="{{ route('admin.master') }}">Tambahkan di Admin Panel → Kelas &amp; Mapel</a>.@else Hubungi administrator.@endcan</div>
 @endif
 @if($variant === 'sekolah')
-    <div class="alert alert-info">Aturan agregasi sekolah: data dihitung murni dari absensi harian wali kelas (bukan gabungan mapel) agar tidak terjadi double-counting.</div>
+    <p class="hint">Dihitung dari absensi harian wali kelas (bukan gabungan mapel) agar tidak terjadi double-counting.</p>
 @endif
 
 @php($me = auth()->user())
@@ -69,8 +69,8 @@
 @endif
 
 <div class="kpis">
-    <div class="kpi kpi-main"><small>Tingkat Kehadiran</small><div class="n mono {{ $rc($counts['rate']) }}">{{ number_format($counts['rate'], 1) }}%</div>
-        <div class="meter" aria-hidden="true"><i class="f-{{ $rc($counts['rate']) }}" style="width:{{ min(100, $counts['rate']) }}%"></i><b style="left:85%"></b></div>
+    <div class="kpi kpi-main"><small>Tingkat Kehadiran</small><div class="n mono {{ $counts['total'] ? $rc($counts['rate']) : '' }}">{{ $counts['total'] ? number_format($counts['rate'], 1).'%' : '—' }}</div>
+        <div class="meter" aria-hidden="true"><i class="f-{{ $rc($counts['rate']) }}" style="width:{{ $counts['total'] ? min(100, $counts['rate']) : 0 }}%"></i><b style="left:85%"></b></div>
         <small>Target sekolah ≥ 85% · {{ $counts['total'] }} catatan</small></div>
     <div class="kpi"><small>Hadir</small><div class="n mono ok">{{ $counts['hadir'] }}</div></div>
     <div class="kpi"><small>Izin</small><div class="n mono">{{ $counts['izin'] }}</div></div>
@@ -80,8 +80,12 @@
 
 <div class="narr">
     <h2>Ringkasan &amp; Saran Otomatis Berdasarkan Kondisi Data</h2>
+    @if($counts['total'])
     <div>{{ $narrative['summary'] }}</div>
     <div class="rec">→ {{ $narrative['recommendation'] }}</div>
+    @else
+    <div>Belum ada data absensi untuk pilihan ini. Ringkasan muncul setelah absensi pertama disimpan atau riwayat diimpor.</div>
+    @endif
 </div>
 
 <div class="split">

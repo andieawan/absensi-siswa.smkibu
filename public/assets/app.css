@@ -162,7 +162,7 @@ details.more>summary{color:var(--pri);font-weight:600;font-size:13px;padding:8px
 .quick-item .ic{width:26px;height:26px;color:var(--pri);background:var(--pri-bg);border-radius:9px;padding:5px;box-sizing:content-box}
 .quick-item b{display:block;font-size:14px}.quick-item small{display:block;font-size:12px}
 .quick-item.primary{background:var(--pri);border-color:var(--pri);color:#fff}.quick-item.primary small{color:#e0e7ff}.quick-item.primary .ic{color:#fff;background:rgba(255,255,255,.18)}.quick-item.primary:hover{background:var(--pri-d)}
-@media(max-width:560px){.quick{grid-template-columns:repeat(3,1fr);gap:8px}.quick-item{flex-direction:column;align-items:center;text-align:center;gap:6px;padding:12px 6px}.quick-item small{display:none}.quick-item b{font-size:12.5px;line-height:1.25}.quick-item.primary{grid-column:1/-1;flex-direction:row;text-align:left;padding:14px}.quick-item.primary small{display:block}.quick-item.primary b{font-size:14.5px}}
+@media(max-width:560px){.quick{display:flex;flex-wrap:wrap;gap:8px}.quick-item{flex:1 1 28%}.quick-item{flex-direction:column;align-items:center;text-align:center;gap:6px;padding:12px 6px}.quick-item small{display:none}.quick-item b{font-size:12.5px;line-height:1.25}.quick-item.primary{flex:1 1 100%;flex-direction:row;text-align:left;padding:14px}.quick-item.primary small{display:block}.quick-item.primary b{font-size:14.5px}}
 .kpis{display:grid;grid-template-columns:1.6fr repeat(4,1fr);gap:10px;margin-bottom:16px}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
 .kpi small{display:block;font-weight:600}.kpi .n{font-size:26px;font-weight:800;margin-top:2px;line-height:1.2}
@@ -293,3 +293,12 @@ tfoot th{background:#f8fafc;padding:10px 12px}
 
 /* Pengaman: tidak ada elemen yang melebarkan halaman melewati layar HP */
 html,body{max-width:100%}body{overflow-x:clip}
+
+/* UX: bar simpan ringkas di HP (satu baris, tidak menutupi daftar) */
+@media(max-width:760px){
+.sticky-save{flex-wrap:nowrap;padding:8px 12px;gap:8px}
+.sticky-save .btn,.sticky-save .btn-pri{flex:0 0 auto;padding:10px 16px;white-space:nowrap}
+.sticky-save>div:first-child{min-width:0}
+.sticky-save small{font-size:12px}
+.sticky-save small.hide-sm{display:none!important}
+}
