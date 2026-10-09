@@ -68,4 +68,14 @@ class StudentTest extends TestCase
         }
         $this->actingAs($this->wali)->get('/surat/izin/1?tglk=2026-10-10&alasan=berobat&salinan=2')->assertOk()->assertSee('SABTU')->assertSee('BEROBAT');
     }
+
+    public function test_bk_bisa_cetak_semua_surat_dari_halaman_bk(): void
+    {
+        foreach (['/bk', '/bk/catatan/kasus', '/bk/presensi'] as $u) {
+            $this->actingAs($this->bk)->get($u)->assertOk();
+        }
+        foreach (['panggilan', 'peringatan', 'teguran', 'pernyataan-berhenti', 'pernyataan-mundur', 'berita-acara', 'izin'] as $j) {
+            $this->actingAs($this->bk)->get($j === 'panggilan' || $j === 'peringatan' ? '/surat/'.$j.'/1' : "/surat/{$j}/1")->assertOk();
+        }
+    }
 }

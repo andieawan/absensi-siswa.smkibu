@@ -51,7 +51,10 @@
     <div class="scroll"><table class="tbl tbl-cards"><thead><tr><th>Nama</th><th>NIS</th><th class="c">H</th><th class="c">I</th><th class="c">S</th><th class="c">A</th><th class="c">Total Absen</th><th class="r">Aksi</th></tr></thead><tbody>
     @foreach($recap as $r)
         <tr><td class="card-title"><b>{{ $r['s']->nama }}</b></td><td class="mono mut" data-label="NIS">{{ $r['s']->nis }}</td><td class="c mono" data-label="Hadir">{{ $r['h'] }}</td><td class="c mono" data-label="Izin">{{ $r['i'] }}</td><td class="c mono warn" data-label="Sakit">{{ $r['sk'] }}</td><td class="c mono bad" data-label="Alpa">{{ $r['a'] }}</td><td class="c mono" data-label="Total absen"><b>{{ $r['abs'] }}</b></td>
-            <td class="r"><a href="{{ route('students', ['id' => $r['s']->id]) }}">Riwayat</a> · <a href="{{ route('bk.records', ['kasus', 'siswa' => $r['s']->id]) }}">Catatan BK</a> · <a target="_blank" href="{{ route('letters.summons', $r['s']) }}">Surat panggilan</a></td></tr>
+            <td class="r"><a href="{{ route('students', ['id' => $r['s']->id]) }}">Riwayat</a> · <a href="{{ route('bk.records', ['kasus', 'siswa' => $r['s']->id]) }}">Catatan BK</a> · <select aria-label="Cetak surat untuk {{ $r['s']->nama }}" style="width:auto;padding:4px 8px;min-height:32px;font-size:13px" onchange="if(this.value){window.open(this.value,'_blank');this.selectedIndex=0}"><option value="">🖨 Cetak surat…</option>
+                <option value="{{ route('letters.summons', $r['s']) }}">Surat Panggilan Wali Murid</option><option value="{{ route('letters.warning', $r['s']) }}">Surat Peringatan</option>
+                @foreach(['teguran' => 'Surat Teguran Tertulis', 'pernyataan-berhenti' => 'Pernyataan Siap Diberhentikan', 'pernyataan-mundur' => 'Pernyataan Mengundurkan Diri', 'berita-acara' => 'Berita Acara Pemanggilan Ortu', 'izin' => 'Surat Izin Meninggalkan Sekolah'] as $jk => $jl)<option value="{{ route('letters.form', [$jk, $r['s']]) }}">{{ $jl }}</option>@endforeach
+            </select></td></tr>
     @endforeach
     </tbody></table></div>@endif
 </div>

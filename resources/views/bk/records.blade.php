@@ -79,10 +79,7 @@
             <div class="row" style="margin-top:8px;gap:6px">
                 @if($r->student)<a class="btn btn-sm" href="{{ route('students', ['id' => $r->student_id]) }}">Riwayat siswa</a>@endif
                 @if(! $masked && $r->berkas_path)<a class="btn btn-sm" target="_blank" href="{{ route('bk.records.file', [$jenis, $r]) }}">📎 Lihat scan</a>@endif
-                @if($jenis === 'surat' && $r->student && ! $masked)
-                    @if($r->kategori === 'Surat Panggilan Orang Tua')<a class="btn btn-sm" target="_blank" href="{{ route('letters.summons', [$r->student, 'alasan' => $r->judul]) }}">🖨 Cetak surat</a>
-                    @elseif($r->kategori === 'Surat Peringatan')<a class="btn btn-sm" target="_blank" href="{{ route('letters.warning', $r->student) }}">🖨 Cetak surat</a>@endif
-                @endif
+                @if($r->student && ! $masked)@include('letters._menu', ['student' => $r->student])@endif
                 @if($canEdit && $r->student)
                     @php($wa = \App\Support\WhatsApp::link($r->student->telp_ortu, \App\Support\WhatsApp::recordMessage($r, $me->nama)))
                     @if($wa)<a class="btn btn-sm btn-wa" target="_blank" rel="noopener" href="{{ $wa }}">WhatsApp ortu</a>@else<span class="btn btn-sm" aria-disabled="true" title="Nomor HP orang tua belum diisi di Data Siswa">No. HP ortu belum ada</span>@endif
