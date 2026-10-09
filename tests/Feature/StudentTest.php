@@ -41,8 +41,8 @@ class StudentTest extends TestCase
     public function test_surat_hanya_untuk_yang_berwenang(): void
     {
         $this->mark(1, $this->daysAgo(1), 'A');
-        $this->actingAs($this->wali)->get('/surat/peringatan/1')->assertOk()->assertSee('421.5 / SP-BK');
-        $this->actingAs($this->bk)->get('/surat/panggilan/1?tgl=Senin&jam=09.00')->assertOk()->assertSee('421.7 / BK-PANGGILAN')->assertSee('09.00');
+        $this->actingAs($this->wali)->get('/surat/peringatan/1')->assertOk()->assertSee('SURAT PERINGATAN');
+        $this->actingAs($this->bk)->get('/surat/panggilan/1?tgl=Senin&jam=09.00')->assertOk()->assertSee('Undangan Wali Murid')->assertSee('09.00');
         $this->actingAs($this->guru)->get('/surat/peringatan/1')->assertForbidden();
         $this->actingAs($this->guru)->get('/surat/laporan?class=1&subject=2')->assertOk()->assertSee('LAPORAN EVALUASI');
     }
@@ -55,5 +55,17 @@ class StudentTest extends TestCase
         $this->actingAs($this->wali)->post('/bk/presensi', ['student' => 1, 'status' => 'I', 'date' => $old])->assertForbidden();
         $this->actingAs($this->bk)->get('/bk/presensi?class=1')->assertOk()->assertSee('Rekap Ketidakhadiran');
         $this->assertStringStartsWith('PK', $this->get('/unduh/bk?class=1')->getContent());
+    }
+
+    public function test_semua_jenis_surat_resmi_tampil(): void
+    {
+        $this->actingAs($this->wali)->get('/surat/panggilan/1?no=7&hari=Sabtu, 10 Oktober 2026')->assertOk()
+            ->assertSee('400.3.8.1/007/101.6.20570966/', false)->assertSee('MEMBAWA FC KK DAN KTP ORANGTUA/WALI')->assertSee('NSS : 342052423288', false);
+        foreach (['teguran' => 'SURAT TEGURAN TERTULIS', 'pernyataan-berhenti' => 'SIAP DI BERHENTIKAN', 'pernyataan-mundur' => 'MENGUNDURKAN DIRI',
+            'berita-acara' => 'BERITA ACARA PEMANGGILAN', 'izin' => 'SURAT IZIN MENINGGALKAN SEKOLAH'] as $j => $teks) {
+            $this->actingAs($this->wali)->get("/surat/{$j}/1")->assertOk()->assertSee($teks, false);
+            $this->actingAs($this->guru)->get("/surat/{$j}/1")->assertForbidden();
+        }
+        $this->actingAs($this->wali)->get('/surat/izin/1?tglk=2026-10-10&alasan=berobat&salinan=2')->assertOk()->assertSee('SABTU')->assertSee('BEROBAT');
     }
 }

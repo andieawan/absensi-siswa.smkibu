@@ -31,9 +31,16 @@
             <div class="head" style="margin-bottom:12px">
                 <div><h1>{{ $student->nama }}</h1><small class="mono">{{ $student->nis }}</small> · <small>{{ $student->schoolClass->name ?? '-' }} · {{ $student->jk === 'L' ? 'Laki-laki' : 'Perempuan' }}</small>
                     <span @class(['badge', 'b-ok' => $student->status === 'aktif', 'b-warn' => $student->status !== 'aktif'])>{{ $student->status }}</span></div>
-                @if($canLetter)<div class="row">
-                    <a class="btn btn-sm" target="_blank" href="{{ route('letters.warning', $student) }}">Surat Peringatan</a>
-                    <a class="btn btn-sm" target="_blank" href="{{ route('letters.summons', $student) }}">Surat Panggilan Ortu</a></div>@endif
+                @if($canLetter)<details class="more" data-close-outside style="position:relative"><summary class="btn btn-sm">🖨 Cetak Surat ▾</summary>
+                    <div class="card" style="position:absolute;right:0;z-index:20;min-width:260px;padding:6px;margin-top:4px;display:grid;gap:2px">
+                        <a href="{{ route('letters.summons', $student) }}" target="_blank">Surat Panggilan Wali Murid</a>
+                        <a href="{{ route('letters.warning', $student) }}" target="_blank">Surat Peringatan</a>
+                        <a href="{{ route('letters.form', ['teguran', $student]) }}" target="_blank">Surat Teguran Tertulis</a>
+                        <a href="{{ route('letters.form', ['pernyataan-berhenti', $student]) }}" target="_blank">Pernyataan Siap Diberhentikan</a>
+                        <a href="{{ route('letters.form', ['pernyataan-mundur', $student]) }}" target="_blank">Pernyataan Mengundurkan Diri</a>
+                        <a href="{{ route('letters.form', ['berita-acara', $student]) }}" target="_blank">Berita Acara Pemanggilan Ortu</a>
+                        <a href="{{ route('letters.form', ['izin', $student]) }}" target="_blank">Surat Izin Meninggalkan Sekolah</a>
+                    </div></details>@endif
             </div>
             <div class="grid g5">
                 <div class="kpi"><small>Kehadiran</small><div class="n mono {{ $rc($stats['rate']) }}">{{ number_format($stats['rate'], 1) }}%</div></div>

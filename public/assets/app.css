@@ -312,3 +312,28 @@ html,body{max-width:100%}body{overflow-x:clip}
 .dlg .btn-danger{background:var(--bad);color:#fff;border-color:var(--bad)}.dlg .btn-danger:hover{background:#9f1239}
 @media(max-width:480px){.dlg-back{align-items:flex-end}.dlg{max-width:none;border-radius:16px 16px 12px 12px}.dlg-act{flex-direction:column-reverse}.dlg-act .btn{width:100%;padding:12px}}
 @keyframes dlgIn{from{opacity:0}to{opacity:1}}
+
+/* Surat resmi SMK IBU */
+.letter .kop2{display:flex;align-items:center;gap:14px;border-bottom:3px double #000;padding-bottom:6px;margin-bottom:16px}
+.letter .kop2 img{flex:none;width:84px;height:84px}
+.letter .kop2>div{flex:1;text-align:center;font-family:"Arial Black",Arial,Helvetica,sans-serif;line-height:1.25}
+.letter .kop2 .k1{font-size:10.5pt;font-weight:900;letter-spacing:.04em}
+.letter .kop2 .k2{font-size:14.5pt;font-weight:900;letter-spacing:.04em}
+.letter .kop2 .k3{font-size:10.5pt;font-weight:900}
+.letter .kop2 .k4{font-size:8.5pt;font-weight:700;font-family:Arial,Helvetica,sans-serif}
+.letter h1.lt{font-size:13pt;text-align:center;text-decoration:underline;letter-spacing:.05em;margin:6px 0 18px;line-height:1.35}
+.letter table.kv td:first-child{white-space:nowrap;padding-right:18px}
+.letter table.ident{width:100%;margin:6px 0 10px}.letter table.ident td{border-bottom:1px dotted #000;padding:4px 6px 2px 0}.letter table.ident td:first-child{width:150px;border-bottom:1px dotted #000}
+.letter p{margin:8px 0}
+.letter .uraian{min-height:60px;white-space:pre-line}
+.letter .dl{display:block;border-bottom:1px dotted #000;height:24px}
+.letter .ttd1{display:flex;justify-content:flex-end;margin-top:20px}.letter .ttd1>div{min-width:260px}
+.letter .ttd1c{text-align:center;margin-top:18px}
+.letter .ttd2{display:flex;justify-content:space-between;margin-top:18px}.letter .ttd2>div{min-width:230px}
+.letter .ttd2 .sp,.letter .ttd1 .sp,.letter .ttd1c .sp{height:62px}
+.letter .saksi{text-align:center;margin-top:16px}.letter .saksi .ttd2{text-align:left}
+.letter .izin{padding:6px 0 18px;margin-bottom:10px;border-bottom:1px dashed #666;page-break-inside:avoid}.letter .izin:last-child{border-bottom:0}
+.letter .izin .kop2 img{width:64px;height:64px}.letter .izin .kop2 .k2{font-size:11pt}.letter .izin .kop2 .k1,.letter .izin .kop2 .k3{font-size:8.5pt}.letter .izin .kop2 .k4{font-size:7pt}
+.letter .izin{font-size:11pt}.letter .izin .sp{height:44px}
+@media(max-width:640px){.letter .kop2 img{width:52px;height:52px}.letter .kop2 .k2{font-size:10pt}.letter .kop2 .k1,.letter .kop2 .k3{font-size:8pt}.letter .kop2 .k4{font-size:7pt}.letter .ttd2{flex-direction:column;gap:6px}}
+@page{size:A4;margin:14mm 16mm}

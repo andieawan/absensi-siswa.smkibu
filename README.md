@@ -207,3 +207,20 @@ Admin → Pengaturan → *Ambang “Perlu Perhatian”*: alpa/sakit/izin tinggi 
 
 ## Impor Riwayat Nilai
 Admin → Impor Data → ⑦ **Riwayat Nilai**: memasukkan nilai lama dari ekspor aplikasi sebelumnya (Timestamp, Nama Guru, Mapel, Kelas, KegiatanId, NamaKegiatan, TanggalKegiatan, TipeSkala, DataNilai berupa JSON `{"NIS":"nilai"}`). Kolom dibaca menurut urutan, .xlsx boleh banyak sheet; KegiatanId yang sudah ada dilewati sehingga aman diulang. Pakai *Cek dulu* sebelum menyimpan.
+
+## Surat Siswa (format resmi SMK IBU)
+
+Dari **Siswa → pilih siswa → 🖨 Cetak Surat** (Wali Kelas siswa, BK, Kepsek, Admin). Semua mengikuti format berkas sekolah
+dan dicetak lewat Ctrl+P / Simpan PDF (A4, satu halaman):
+
+| Surat | Keterangan |
+|---|---|
+| Surat Panggilan Wali Murid | Nomor `400.3.8.1/{urut}/101.6.20570966/{tahun}`, jam, hari-tanggal, menemui, tempat, catatan NB |
+| Surat Peringatan, Surat Teguran Tertulis | Identitas siswa, uraian pelanggaran (otomatis memuat jumlah alpa), tanda tangan ortu/siswa & saksi |
+| Pernyataan Siap Diberhentikan / Mengundurkan Diri | Identitas siswa, tanda tangan ortu/siswa & saksi |
+| Berita Acara Pemanggilan Orang Tua | Hari/tanggal/pukul, hasil, tanda tangan Guru BK, ortu, Kepala Sekolah |
+| Surat Izin Meninggalkan Sekolah | Bisa 1–4 salinan per halaman, guru yang menangani dari akun yang login |
+
+Isian di bagian atas halaman (jam, tanggal, alamat, dll.) bisa diubah lalu **Perbarui** sebelum dicetak. Kop (logo, NSS/NPSN, alamat), nama Kepala Sekolah
+dan NUPTK diatur lewat `config/absensi.php` (`surat`) atau `.env` (`SURAT_ALAMAT`, `SURAT_KEPSEK`, `SURAT_KEPSEK_NUPTK`, dll.); nama Kepala Sekolah di
+Admin → Pengaturan, bila diisi, dipakai lebih dulu.

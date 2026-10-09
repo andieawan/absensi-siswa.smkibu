@@ -93,6 +93,7 @@ Route::middleware(['auth', 'auth.session'])->group(function () {
 
     Route::get('/surat/peringatan/{student}', [LetterController::class, 'warning'])->name('letters.warning');
     Route::get('/surat/panggilan/{student}', [LetterController::class, 'summons'])->name('letters.summons');
+    Route::get('/surat/{jenis}/{student}', [LetterController::class, 'form'])->whereIn('jenis', ['teguran', 'pernyataan-berhenti', 'pernyataan-mundur', 'berita-acara', 'izin'])->name('letters.form');
     Route::get('/surat/laporan', [LetterController::class, 'report'])->name('letters.report');
 
     Route::get('/unduh/absensi', [ExportController::class, 'attendance'])->name('export.attendance');

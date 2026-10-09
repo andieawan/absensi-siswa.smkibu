@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Services\Audit;
 use App\Services\Rules;
+use App\Support\LetterForms;
 use Illuminate\Http\Request;
 
 /** Surat resmi siap cetak (Ctrl+P → Simpan sebagai PDF), pengganti Google Docs. */
@@ -23,22 +24,27 @@ class LetterController extends Controller
 
     public function warning(Request $request, Student $student)
     {
-        $this->authorizeStudent($student);
-        Audit::log('Cetak Surat Peringatan', 'Siswa', $this->me()->nama, "{$student->nama} ({$student->nis})");
-        $records = Attendance::where('student_id', $student->id)->orderBy('tanggal')->get();
-
-        return view('letters.warning', [
-            'student' => $student->load('schoolClass'), 'records' => $records, 'place' => (string) $request->query('tempat'),
-            'alpa' => $records->where('status', 'A')->values(), 'izin' => $records->where('status', 'I')->count(), 'sakit' => $records->where('status', 'S')->count(),
-        ]);
+        return $this->form($request, 'peringatan', $student);
     }
 
     public function summons(Request $request, Student $student)
     {
-        $this->authorizeStudent($student);
-        Audit::log('Cetak Surat Panggilan', 'Siswa', $this->me()->nama, "{$student->nama} ({$student->nis})");
+        return $this->form($request, 'panggilan', $student);
+    }
 
-        return view('letters.summons', ['student' => $student->load('schoolClass')] + $request->only(['tempat', 'tgl', 'jam', 'ruang', 'alasan']));
+    /** Surat siswa bentuk resmi SMK IBU: panggilan, peringatan, teguran, pernyataan, berita acara, izin. */
+    public function form(Request $request, string $jenis, Student $student)
+    {
+        $this->authorizeStudent($student);
+        $title = LetterForms::TITLES[$jenis] ?? abort(404);
+        Audit::log('Cetak '.$title, 'Siswa', $this->me()->nama, "{$student->nama} ({$student->nis})");
+        $fields = LetterForms::fields($jenis, $student, $this->me(), $request);
+        $v = collect($fields)->mapWithKeys(fn ($f) => [$f['k'] => $f['v']])->all();
+
+        return view('letters.form', [
+            'jenis' => $jenis, 'title' => $title, 'student' => $student->load('schoolClass'), 'fields' => $fields, 'v' => $v,
+            'now' => LetterForms::dateParts(), 'cfg' => config('absensi.surat'),
+        ]);
     }
 
     public function report(Request $request)
