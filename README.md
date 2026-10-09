@@ -160,6 +160,7 @@ persis seperti di bawah. Tanpa terminal (cPanel): lihat tabel "Tanpa terminal" p
 | Perintah | Fungsi |
 |---|---|
 | `php artisan absensi:backup` | Backup database sekarang → `storage/app/backups` (MySQL `.sql`, SQLite salinan file) |
+| `sudo bash deploy/restore.sh` | **Pulihkan (restore)** database dari backup: pilih berkas, backup pengaman otomatis, lalu impor (ketik `PULIHKAN` untuk konfirmasi) |
 | `php artisan down --secret=rahasia` / `php artisan up` | Mode pemeliharaan saat update (admin tetap bisa masuk lewat `/rahasia`) / hidupkan lagi |
 | `php artisan route:list` | Daftar semua alamat halaman (berguna untuk memeriksa) |
 

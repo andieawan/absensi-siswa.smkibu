@@ -175,6 +175,20 @@ php artisan up
 Backup otomatis dibuat sebelum migrasi lewat tombol Admin → Pengaturan → *Perbarui Database*; bila memakai terminal, jalankan
 `php artisan absensi:backup` **sebelum** `migrate`.
 
+## 13b. Memulihkan (restore) database dari backup
+
+Backup harian tersimpan di `storage/app/backups/absensi_*.sql` (juga bisa diunduh dari Admin → Pengaturan → Backup).
+
+```bash
+cd /var/www/absensi
+sudo bash deploy/restore.sh                      # pilih dari daftar backup
+sudo bash deploy/restore.sh /path/absensi_2026-10-08T01-00-00.sql   # atau berkas tertentu (mis. hasil unduhan)
+```
+
+Skrip: membuat **backup pengaman** kondisi sekarang → mode pemeliharaan → mengimpor → `migrate` → bersihkan cache → aktif lagi.
+Semua pengguna perlu login ulang. Bila salah pilih, jalankan skrip lagi dan pilih backup pengaman yang disebut di akhir proses.
+Untuk berkas dari komputer: unggah dengan `scp absensi_xxx.sql user@server:/tmp/` lalu berikan path-nya.
+
 ## 14. Jika ada masalah
 | Gejala | Penyebab & solusi |
 |---|---|
